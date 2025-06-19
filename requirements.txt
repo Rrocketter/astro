@@ -1,0 +1,4 @@
+stingray
+astropy
+numpy
+matplotlib
