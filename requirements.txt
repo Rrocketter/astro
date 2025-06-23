@@ -2,3 +2,4 @@ stingray
 astropy
 numpy
 matplotlib
+scipy

@@ -1,0 +1,11 @@
+Linear Continuum Fit Results
+============================
+
+Power-law model: P(f) = A * f^α
+Power-law index (α): -0.599671 ± 0.009347
+Normalization (A): 1.296164e-03
+Log normalization: -2.887340 ± 0.012491
+R-squared: 0.837780
+Pearson correlation: -0.915303
+P-value: 5.199120e-317
+Number of data points: 799
