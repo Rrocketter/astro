@@ -1,0 +1,50 @@
+Polynomial Continuum Fit Results
+================================
+
+Best model (lowest AIC): 3rd Order
+
+Model Comparison:
+--------------------------------------------------
+Model        R²       AIC        BIC        MSE         
+--------------------------------------------------
+Linear       0.8150   -149.55    -146.22    0.019503    
+2nd Order    0.8442   -154.27    -149.28    0.016416    
+3rd Order    0.8758   -161.10    -154.44    0.013091    
+
+Detailed Results:
+==================================================
+
+Linear Model:
+  Slope (power-law index): -0.784470 ± 0.061452
+  Intercept: -2.817842 ± 0.028851
+  Power-law model: P(f) = 1.521101e-03 * f^-0.784470
+  R²: 0.814962
+  AIC: -149.551
+  BIC: -146.224
+  MSE: 1.950256e-02
+
+2nd Order Model:
+  a (quadratic coeff): 0.316830 ± 0.121772
+  b (linear coeff): -0.809336 ± 0.057951
+  c (constant): -2.880608 ± 0.036084
+  Model: log10(P) = 3.168e-01*log10(f)² + -0.809*log10(f) + -2.881
+  R²: 0.844250
+  AIC: -154.271
+  BIC: -149.280
+  MSE: 1.641570e-02
+
+3rd Order Model:
+  a (cubic coeff): 0.769115 ± 0.257993
+  b (quadratic coeff): 0.409686 ± 0.114602
+  c (linear coeff): -1.143179 ± 0.123674
+  d (constant): -2.862782 ± 0.033224
+  Model: log10(P) = 7.691e-01*log10(f)³ + 4.097e-01*log10(f)² + -1.143*log10(f) + -2.863
+  R²: 0.875789
+  AIC: -161.096
+  BIC: -154.442
+  MSE: 1.309150e-02
+
+Number of data points: 39
+
+Note: AIC (Akaike Information Criterion) and BIC (Bayesian Information Criterion)
+are used for model selection. Lower values indicate better models.
