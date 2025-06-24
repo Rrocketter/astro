@@ -1,0 +1,100 @@
+MAXI J1535-571 Residual Peak Analysis Summary
+=============================================
+
+OBJECTIVE: Identify and characterize peaks in the power spectral residuals after subtracting the polynomial continuum model.
+
+METHODOLOGY:
+============
+1. Subtracted 3rd order polynomial continuum from the power spectrum
+2. Analyzed residuals in both linear and log space
+3. Applied automated peak detection algorithms
+4. Fitted Gaussian models to identified peaks
+5. Assessed statistical significance of each peak
+
+CONTINUUM SUBTRACTION:
+=====================
+- Used best-fit 3rd order polynomial from previous analysis
+- Continuum parameters: [0.769, 0.410, -1.143, -2.863]
+- RMS of residuals: 0.000844 (linear space), 0.114 (log space)
+
+PEAK DETECTION RESULTS:
+======================
+Total peaks identified: 4
+
+Peak Details:
+Peak 1: 1.125 Hz, amplitude = 0.000714, significance = 0.8σ
+Peak 2: 1.500 Hz, amplitude = 0.000327, significance = 0.4σ  
+Peak 3: 4.125 Hz, amplitude = 0.000135, significance = 0.2σ
+Peak 4: 4.375 Hz, amplitude = 0.000200, significance = 0.2σ
+
+SIGNIFICANCE ASSESSMENT:
+=======================
+- Noise level (1σ): 0.000844
+- Highest significance: 0.85σ (Peak 1 at 1.125 Hz)
+- No peaks exceed 3σ detection threshold
+- No peaks exceed 5σ confirmation threshold
+
+PEAK MODELING RESULTS:
+=====================
+
+Single Gaussian Model:
+- Center frequency: 1.086 ± 0.185 Hz
+- Amplitude: 0.000810 ± 0.000585
+- Width (σ): 0.221 ± 0.185 Hz  
+- FWHM: 0.521 Hz
+- RMS after fit: 0.000812
+
+Double Gaussian Model (BEST):
+- Peak 1: Center = 0.811 Hz, Amplitude = 0.001246, Width = 0.039 Hz
+- Peak 2: Center = 1.141 Hz, Amplitude = 0.000753, Width = 0.204 Hz
+- RMS after fit: 0.000809 (lowest)
+
+INTERPRETATION:
+==============
+
+1. STATISTICAL SIGNIFICANCE:
+   - All detected peaks have significance < 1σ
+   - No statistically significant quasi-periodic oscillations (QPOs) detected
+   - The highest peak (0.85σ) is likely noise fluctuation
+
+2. FREQUENCY DISTRIBUTION:
+   - Peaks cluster in two regions: ~1-1.5 Hz and ~4-4.4 Hz
+   - Low-frequency peaks (1-1.5 Hz) have higher amplitudes
+   - High-frequency peaks (4+ Hz) are weaker
+
+3. PHYSICAL IMPLICATIONS:
+   - No strong QPOs detected in this frequency range (0.125-6.25 Hz)
+   - The continuum model successfully captures most variability
+   - Residual structure is consistent with noise
+
+4. MODEL PERFORMANCE:
+   - Double Gaussian provides marginally better fit (RMS = 0.000809)
+   - Single Gaussian is simpler and nearly equivalent (RMS = 0.000812)
+   - Improvement over continuum-only: ~4% reduction in RMS
+
+LIMITATIONS:
+============
+1. Limited frequency resolution (39 bins) due to computational constraints
+2. Low statistical significance of all peaks
+3. Large uncertainties in double Gaussian parameters
+4. Short segment size (8s) may limit detection of longer-period features
+
+RECOMMENDATIONS:
+===============
+1. Increase frequency resolution with longer segments or higher time resolution
+2. Use longer observation to improve statistical power
+3. Apply more sophisticated peak detection methods (e.g., matched filtering)
+4. Consider searching for QPOs in different frequency ranges
+5. Examine coherent vs. incoherent variability
+
+CONCLUSION:
+==========
+No statistically significant quasi-periodic oscillations were detected in the 
+residuals after continuum subtraction. The residual structure is consistent 
+with red noise fluctuations around the polynomial continuum model. The analysis 
+demonstrates that the 3rd order polynomial effectively captures the underlying 
+continuum variability of MAXI J1535-571 in this frequency range.
+
+Analysis Date: June 24, 2025
+Data: NICER X-ray timing observations of MAXI J1535-571
+Frequency Range: 0.125 - 6.25 Hz

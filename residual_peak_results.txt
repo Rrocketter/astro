@@ -1,0 +1,41 @@
+Residual Peak Fitting Results
+============================
+
+Continuum Model (3rd Order Polynomial):
+Parameters: [ 0.76911518  0.40968616 -1.14317876 -2.86278234]
+RMS of residuals: 0.000844 (linear space)
+RMS of residuals: 0.114418 (log space)
+
+Peak Detection:
+Number of peaks found: 4
+Peak frequencies: [1.125 1.5   4.125 4.375]
+Peak amplitudes: [0.00071355 0.00032667 0.00013505 0.00019998]
+Peak significance (σ): [0.84569881 0.38716564 0.16006228 0.23701773]
+
+Peak 1: 1.125000 Hz, amplitude = 0.000714, significance = 0.8σ
+Peak 2: 1.500000 Hz, amplitude = 0.000327, significance = 0.4σ
+Peak 3: 4.125000 Hz, amplitude = 0.000135, significance = 0.2σ
+Peak 4: 4.375000 Hz, amplitude = 0.000200, significance = 0.2σ
+
+Peak Model Fits:
+========================================
+
+Single Gaussian:
+RMS of residuals after fit: 0.000812
+Amplitude: 0.000810 ± 0.000585
+Center frequency: 1.085897 ± 0.184702 Hz
+Width (σ): 0.221425 ± 0.184702 Hz
+FWHM: 0.521455 Hz
+
+Double Gaussian:
+RMS of residuals after fit: 0.000809
+Peak 1 - Amp: 0.001246 ± 9.756172
+Peak 1 - Center: 0.811074 ± 8.872082 Hz
+Peak 1 - Width: 0.039416 ± 122.831627 Hz
+Peak 2 - Amp: 0.000753 ± 0.000655
+Peak 2 - Center: 1.140668 ± 0.396825 Hz
+Peak 2 - Width: 0.204289 ± 0.385899 Hz
+
+Best model: Double Gaussian (lowest RMS)
+
+Analysis completed on: June 24, 2025
