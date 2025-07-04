@@ -14,6 +14,9 @@ from .models import (single_lorentzian, multiple_lorentzian,
                      validate_parameters, get_parameter_bounds, 
                      generate_initial_guess)
 from .errors import FittingError, ParameterError, DataError, ConvergenceError
+from .metrics import (calculate_aic, calculate_aicc, calculate_bic, 
+                     calculate_parameter_correlations, calculate_goodness_of_fit,
+                     calculate_confidence_intervals)
 
 
 class LorentzianFitter:
@@ -78,7 +81,7 @@ class LorentzianFitter:
     def _calculate_fit_statistics(self, x: np.ndarray, y: np.ndarray, 
                                 y_fit: np.ndarray, yerr: Optional[np.ndarray],
                                 n_params: int) -> Dict[str, float]:
-        """Calculate fit quality statistics."""
+        """Calculate comprehensive fit quality statistics."""
         residuals = y - y_fit
         n_points = len(x)
         dof = n_points - n_params
@@ -89,22 +92,42 @@ class LorentzianFitter:
         if yerr is not None:
             chi_squared = np.sum((residuals / yerr) ** 2)
         else:
-            # Use residual standard deviation as weight
-            chi_squared = np.sum(residuals ** 2) / np.var(residuals)
+            # Use residual variance for unweighted chi-squared
+            residual_var = np.var(residuals, ddof=dof)
+            if residual_var > 0:
+                chi_squared = np.sum(residuals ** 2) / residual_var
+            else:
+                chi_squared = 0.0
         
         reduced_chi_squared = chi_squared / dof
         
-        return {
+        # Calculate information criteria
+        aic = calculate_aic(chi_squared, n_params, n_points)
+        aicc = calculate_aicc(chi_squared, n_params, n_points)
+        bic = calculate_bic(chi_squared, n_params, n_points)
+        
+        # Calculate additional goodness-of-fit metrics
+        gof_metrics = calculate_goodness_of_fit(y, y_fit, yerr)
+        
+        # Combine all statistics
+        fit_stats = {
             'chi_squared': chi_squared,
             'reduced_chi_squared': reduced_chi_squared,
             'degrees_of_freedom': dof,
-            'residual_std': np.std(residuals),
-            'r_squared': 1 - np.sum(residuals**2) / np.sum((y - np.mean(y))**2)
+            'aic': aic,
+            'aicc': aicc,
+            'bic': bic,
+            'n_points': n_points,
+            'n_params': n_params,
+            **gof_metrics
         }
+        
+        return fit_stats
     
     def fit_single(self, x: np.ndarray, y: np.ndarray, 
                    yerr: Optional[np.ndarray] = None,
-                   initial_guess: Optional[List[float]] = None) -> Tuple[np.ndarray, np.ndarray, Dict]:
+                   initial_guess: Optional[List[float]] = None,
+                   confidence_level: float = 0.68) -> Tuple[np.ndarray, np.ndarray, Dict]:
         """
         Fit a single Lorentzian component.
         
@@ -118,6 +141,8 @@ class LorentzianFitter:
             Uncertainties in y
         initial_guess : list, optional
             Initial parameter guess [amplitude, center, width, baseline]
+        confidence_level : float
+            Confidence level for parameter intervals (default: 0.68 for 1σ)
             
         Returns:
         --------
@@ -166,11 +191,24 @@ class LorentzianFitter:
             # Calculate parameter uncertainties
             param_errors = self._calculate_uncertainties(pcov, fit_stats['reduced_chi_squared'])
             
+            # Calculate confidence intervals
+            conf_lower, conf_upper = calculate_confidence_intervals(
+                popt, param_errors, confidence_level)
+            
+            # Calculate parameter correlations
+            correlations = calculate_parameter_correlations(pcov)
+            
             # Prepare fit info
             fit_info = {
                 'fitted_curve': y_fit,
                 'residuals': y - y_fit,
                 'covariance_matrix': pcov,
+                'correlation_matrix': correlations,
+                'confidence_intervals': {
+                    'lower': conf_lower,
+                    'upper': conf_upper,
+                    'level': confidence_level
+                },
                 **fit_stats
             }
             
@@ -187,7 +225,8 @@ class LorentzianFitter:
     def fit_multiple(self, x: np.ndarray, y: np.ndarray, 
                      n_components: int,
                      yerr: Optional[np.ndarray] = None,
-                     initial_guess: Optional[List[float]] = None) -> Tuple[np.ndarray, np.ndarray, Dict]:
+                     initial_guess: Optional[List[float]] = None,
+                     confidence_level: float = 0.68) -> Tuple[np.ndarray, np.ndarray, Dict]:
         """
         Fit multiple Lorentzian components.
         
@@ -203,6 +242,8 @@ class LorentzianFitter:
             Uncertainties in y
         initial_guess : list, optional
             Initial parameter guess
+        confidence_level : float
+            Confidence level for parameter intervals (default: 0.68 for 1σ)
             
         Returns:
         --------
@@ -259,11 +300,24 @@ class LorentzianFitter:
             # Calculate parameter uncertainties
             param_errors = self._calculate_uncertainties(pcov, fit_stats['reduced_chi_squared'])
             
+            # Calculate confidence intervals
+            conf_lower, conf_upper = calculate_confidence_intervals(
+                popt, param_errors, confidence_level)
+            
+            # Calculate parameter correlations
+            correlations = calculate_parameter_correlations(pcov)
+            
             # Prepare fit info
             fit_info = {
                 'fitted_curve': y_fit,
                 'residuals': y - y_fit,
                 'covariance_matrix': pcov,
+                'correlation_matrix': correlations,
+                'confidence_intervals': {
+                    'lower': conf_lower,
+                    'upper': conf_upper,
+                    'level': confidence_level
+                },
                 'n_components': n_components,
                 **fit_stats
             }
