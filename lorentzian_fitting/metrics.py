@@ -320,3 +320,340 @@ def calculate_goodness_of_fit(y_data: np.ndarray, y_fit: np.ndarray,
         'residual_std': np.std(residuals),
         'residual_mean': np.mean(residuals)
     }
+
+
+def likelihood_ratio_test(chi2_simple: float, chi2_complex: float, 
+                         df_simple: int, df_complex: int) -> Tuple[float, float]:
+    """
+    Perform likelihood ratio test between nested models.
+    
+    Parameters:
+    -----------
+    chi2_simple : float
+        Chi-squared for simpler model
+    chi2_complex : float
+        Chi-squared for more complex model
+    df_simple : int
+        Degrees of freedom for simpler model
+    df_complex : int
+        Degrees of freedom for more complex model
+        
+    Returns:
+    --------
+    tuple
+        (test_statistic, p_value)
+    """
+    from scipy import stats
+    
+    if df_simple <= df_complex:
+        raise ValueError("Simple model must have more degrees of freedom")
+    
+    # Test statistic is difference in chi-squared
+    test_stat = chi2_simple - chi2_complex
+    df_diff = df_simple - df_complex
+    
+    # P-value from chi-squared distribution
+    p_value = 1 - stats.chi2.cdf(test_stat, df_diff)
+    
+    return test_stat, p_value
+
+
+def f_test(chi2_simple: float, chi2_complex: float,
+           df_simple: int, df_complex: int) -> Tuple[float, float]:
+    """
+    Perform F-test for model comparison.
+    
+    Parameters:
+    -----------
+    chi2_simple : float
+        Chi-squared for simpler model
+    chi2_complex : float
+        Chi-squared for more complex model
+    df_simple : int
+        Degrees of freedom for simpler model
+    df_complex : int
+        Degrees of freedom for more complex model
+        
+    Returns:
+    --------
+    tuple
+        (f_statistic, p_value)
+    """
+    from scipy import stats
+    
+    if df_simple <= df_complex:
+        raise ValueError("Simple model must have more degrees of freedom")
+    
+    # Calculate F-statistic
+    numerator = (chi2_simple - chi2_complex) / (df_simple - df_complex)
+    denominator = chi2_complex / df_complex
+    
+    if denominator == 0:
+        return np.inf, 0.0
+    
+    f_stat = numerator / denominator
+    df_num = df_simple - df_complex
+    df_den = df_complex
+    
+    # P-value from F-distribution
+    p_value = 1 - stats.f.cdf(f_stat, df_num, df_den)
+    
+    return f_stat, p_value
+
+
+def model_selection_criteria(results: Dict[str, Dict]) -> Dict[str, any]:
+    """
+    Apply model selection criteria to compare multiple models.
+    
+    Parameters:
+    -----------
+    results : dict
+        Dictionary with model names as keys and fit results as values
+        Each result should contain 'aic', 'bic', 'chi_squared', etc.
+        
+    Returns:
+    --------
+    dict
+        Model selection summary with recommendations
+    """
+    if not results:
+        return {}
+    
+    # Extract information criteria
+    aic_values = {model: result['aic'] for model, result in results.items()}
+    bic_values = {model: result['bic'] for model, result in results.items()}
+    
+    # Calculate deltas
+    delta_aic = calculate_delta_ic(aic_values)
+    delta_bic = calculate_delta_ic(bic_values)
+    
+    # Calculate Akaike weights
+    akaike_weights = calculate_akaike_weights(aic_values)
+    
+    # Find best models
+    best_aic = min(aic_values, key=aic_values.get)
+    best_bic = min(bic_values, key=bic_values.get)
+    
+    # Apply decision thresholds
+    strong_evidence_threshold = 10  # Delta > 10 = strong evidence
+    decisive_evidence_threshold = 20  # Delta > 20 = decisive evidence
+    
+    recommendations = {}
+    
+    for model in results.keys():
+        delta_aic_val = delta_aic[model]
+        delta_bic_val = delta_bic[model]
+        weight = akaike_weights[model]
+        
+        # AIC-based recommendation
+        if delta_aic_val < 2:
+            aic_support = "substantial"
+        elif delta_aic_val < 4:
+            aic_support = "considerably less"
+        elif delta_aic_val < strong_evidence_threshold:
+            aic_support = "much less"
+        elif delta_aic_val < decisive_evidence_threshold:
+            aic_support = "very strong evidence against"
+        else:
+            aic_support = "decisive evidence against"
+        
+        # BIC-based recommendation
+        if delta_bic_val < 2:
+            bic_support = "weak evidence against"
+        elif delta_bic_val < 6:
+            bic_support = "positive evidence against"
+        elif delta_bic_val < strong_evidence_threshold:
+            bic_support = "strong evidence against"
+        else:
+            bic_support = "very strong evidence against"
+        
+        recommendations[model] = {
+            'delta_aic': delta_aic_val,
+            'delta_bic': delta_bic_val,
+            'akaike_weight': weight,
+            'aic_support': aic_support,
+            'bic_support': bic_support
+        }
+    
+    return {
+        'best_aic_model': best_aic,
+        'best_bic_model': best_bic,
+        'model_recommendations': recommendations,
+        'summary': {
+            'aic_values': aic_values,
+            'bic_values': bic_values,
+            'delta_aic': delta_aic,
+            'delta_bic': delta_bic,
+            'akaike_weights': akaike_weights
+        }
+    }
+
+
+def assess_model_adequacy(residuals: np.ndarray, yerr: Optional[np.ndarray] = None,
+                         alpha: float = 0.05) -> Dict[str, any]:
+    """
+    Assess model adequacy using residual analysis.
+    
+    Parameters:
+    -----------
+    residuals : array-like
+        Model residuals
+    yerr : array-like, optional
+        Data uncertainties
+    alpha : float
+        Significance level for tests
+        
+    Returns:
+    --------
+    dict
+        Dictionary of adequacy test results
+    """
+    from scipy import stats
+    
+    n_points = len(residuals)
+    
+    if yerr is not None:
+        standardized_residuals = residuals / yerr
+    else:
+        standardized_residuals = residuals / np.std(residuals)
+    
+    # Normality tests
+    shapiro_stat, shapiro_p = stats.shapiro(standardized_residuals)
+    
+    # Randomness test (runs test)
+    median_resid = np.median(standardized_residuals)
+    runs, n1, n2 = _runs_test(standardized_residuals > median_resid)
+    
+    # Expected runs and variance
+    expected_runs = 2 * n1 * n2 / (n1 + n2) + 1
+    var_runs = (2 * n1 * n2 * (2 * n1 * n2 - n1 - n2)) / ((n1 + n2)**2 * (n1 + n2 - 1))
+    
+    if var_runs > 0:
+        z_runs = (runs - expected_runs) / np.sqrt(var_runs)
+        runs_p = 2 * (1 - stats.norm.cdf(abs(z_runs)))
+    else:
+        z_runs = 0
+        runs_p = 1.0
+    
+    # Outlier detection (beyond 3 sigma)
+    outliers = np.abs(standardized_residuals) > 3
+    n_outliers = np.sum(outliers)
+    outlier_fraction = n_outliers / n_points
+    
+    return {
+        'normality_test': {
+            'shapiro_statistic': shapiro_stat,
+            'shapiro_p_value': shapiro_p,
+            'is_normal': shapiro_p > alpha
+        },
+        'randomness_test': {
+            'runs_statistic': z_runs,
+            'runs_p_value': runs_p,
+            'is_random': runs_p > alpha
+        },
+        'outlier_analysis': {
+            'n_outliers': n_outliers,
+            'outlier_fraction': outlier_fraction,
+            'outlier_indices': np.where(outliers)[0].tolist()
+        },
+        'residual_stats': {
+            'mean': np.mean(standardized_residuals),
+            'std': np.std(standardized_residuals),
+            'skewness': stats.skew(standardized_residuals),
+            'kurtosis': stats.kurtosis(standardized_residuals)
+        }
+    }
+
+
+def _runs_test(binary_sequence: np.ndarray) -> Tuple[int, int, int]:
+    """
+    Helper function for runs test.
+    
+    Parameters:
+    -----------
+    binary_sequence : array-like
+        Boolean array
+        
+    Returns:
+    --------
+    tuple
+        (number_of_runs, n_true, n_false)
+    """
+    n1 = np.sum(binary_sequence)  # Number of True values
+    n2 = len(binary_sequence) - n1  # Number of False values
+    
+    # Count runs
+    runs = 1
+    for i in range(1, len(binary_sequence)):
+        if binary_sequence[i] != binary_sequence[i-1]:
+            runs += 1
+    
+    return runs, n1, n2
+
+
+def cross_validation_score(x: np.ndarray, y: np.ndarray, yerr: np.ndarray,
+                          fit_function, k_folds: int = 5) -> Dict[str, float]:
+    """
+    Calculate cross-validation score for model assessment.
+    
+    Parameters:
+    -----------
+    x : array-like
+        Independent variable
+    y : array-like
+        Dependent variable
+    yerr : array-like
+        Uncertainties in y
+    fit_function : callable
+        Function that performs the fit
+    k_folds : int
+        Number of cross-validation folds
+        
+    Returns:
+    --------
+    dict
+        Cross-validation metrics
+    """
+    from sklearn.model_selection import KFold
+    
+    n_points = len(x)
+    kf = KFold(n_splits=k_folds, shuffle=True, random_state=42)
+    
+    cv_scores = []
+    cv_chi2 = []
+    
+    for train_idx, test_idx in kf.split(x):
+        x_train, x_test = x[train_idx], x[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+        yerr_train, yerr_test = yerr[train_idx], yerr[test_idx]
+        
+        try:
+            # Fit on training data
+            params, _, _ = fit_function(x_train, y_train, yerr_train)
+            
+            # Predict on test data (need to determine model type)
+            # This is a simplified version - would need model-specific prediction
+            y_pred = np.zeros_like(y_test)  # Placeholder
+            
+            # Calculate test score
+            residuals = y_test - y_pred
+            chi2 = np.sum((residuals / yerr_test) ** 2)
+            score = 1 - np.sum(residuals**2) / np.sum((y_test - np.mean(y_test))**2)
+            
+            cv_scores.append(score)
+            cv_chi2.append(chi2)
+            
+        except Exception:
+            # Skip failed folds
+            continue
+    
+    if not cv_scores:
+        return {'mean_score': 0.0, 'std_score': 0.0, 'mean_chi2': np.inf}
+    
+    return {
+        'mean_score': np.mean(cv_scores),
+        'std_score': np.std(cv_scores),
+        'mean_chi2': np.mean(cv_chi2),
+        'std_chi2': np.std(cv_chi2),
+        'n_successful_folds': len(cv_scores)
+    }
