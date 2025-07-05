@@ -13,6 +13,7 @@ from lorentzian_fitting.models import single_lorentzian, multiple_lorentzian
 from lorentzian_fitting.fitting import LorentzianFitter
 from lorentzian_fitting.comparison import ModelComparison, automated_model_selection
 from lorentzian_fitting.metrics import model_selection_criteria
+from lorentzian_fitting.pipeline import AutomatedPipeline, PipelineSettings
 
 def create_test_data():
     """Create synthetic test data with known parameters."""
@@ -244,9 +245,132 @@ def test_step2_metrics():
     
     return True
 
+def test_step3_pipeline():
+    """Test Step 3: Automated fitting pipeline."""
+    print("\n" + "=" * 60)
+    print("TESTING STEP 3: AUTOMATED PIPELINE")
+    print("=" * 60)
+    
+    (x1, y1, yerr1), (x2, y2, yerr2) = create_test_data()
+    
+    # Test automated pipeline
+    print("\n1. Automated Pipeline (Single Lorentzian Data):")
+    print("-" * 45)
+    
+    try:
+        # Configure pipeline settings
+        settings = PipelineSettings(
+            max_components=3,
+            delta_aic_threshold=20.0,
+            n_retry_attempts=2
+        )
+        
+        pipeline = AutomatedPipeline(settings)
+        result1 = pipeline.fit_with_model_selection(x1, y1, yerr1)
+        
+        print(f"Selected model: {result1['model_name']}")
+        print(f"Number of components: {result1['n_components']}")
+        print(f"Selection confidence: {result1['selection_summary']['selection_confidence']}")
+        print(f"Selection rationale: {', '.join(result1['selection_summary']['selection_rationale'])}")
+        
+        # Print fit quality
+        fit_quality = result1['validation']['fit_quality']
+        print(f"\nFit Quality:")
+        print(f"  Reduced χ²: {fit_quality['reduced_chi_squared']:.3f}")
+        print(f"  R²: {fit_quality['r_squared']:.3f}")
+        print(f"  Overall quality: {'Good' if result1['validation']['overall_quality'] else 'Poor'}")
+        
+        # Show alternatives
+        alternatives = result1['selection_summary']['alternative_models']
+        if alternatives:
+            print(f"\nAlternative models:")
+            for alt in alternatives:
+                print(f"  {alt['model']}: ΔAIC = {alt['delta_aic']:.1f} ({alt['evidence_strength']} evidence against)")
+        
+    except Exception as e:
+        print(f"Automated pipeline failed: {e}")
+        return False
+    
+    # Test on more complex data
+    print("\n2. Automated Pipeline (Two Lorentzian Data):")
+    print("-" * 45)
+    
+    try:
+        result2 = pipeline.fit_with_model_selection(x2, y2, yerr2)
+        
+        print(f"Selected model: {result2['model_name']}")
+        print(f"Number of components: {result2['n_components']}")
+        print(f"True number of components: 2")
+        print(f"Selection confidence: {result2['selection_summary']['selection_confidence']}")
+        
+        # Create pipeline comparison plot
+        plt.figure(figsize=(15, 10))
+        
+        # Plot the best fit
+        plt.subplot(2, 2, 1)
+        best_fit = result2['best_fit']
+        plt.errorbar(x2, y2, yerr=yerr2, fmt='o', alpha=0.7, label='Data')
+        plt.plot(x2, best_fit['fit_info']['fitted_curve'], 'r-', linewidth=2, label='Best fit')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.title(f'Best Fit: {result2["model_name"]}')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Plot model comparison
+        plt.subplot(2, 2, 2)
+        all_models = result2['all_models']['model_selection']['summary']
+        models = list(all_models['aic_values'].keys())
+        aic_values = list(all_models['aic_values'].values())
+        
+        colors = ['green' if model == result2['model_name'] else 'lightblue' for model in models]
+        plt.bar(range(len(models)), aic_values, color=colors)
+        plt.xlabel('Model')
+        plt.ylabel('AIC')
+        plt.title('Model Comparison (Green = Selected)')
+        plt.xticks(range(len(models)), [m.replace('_', '\n') for m in models], rotation=45)
+        plt.grid(True, alpha=0.3)
+        
+        # Plot threshold analysis
+        plt.subplot(2, 2, 3)
+        delta_aic = list(all_models['delta_aic'].values())
+        plt.bar(range(len(models)), delta_aic, color=colors)
+        plt.axhline(y=4, color='orange', linestyle='--', label='Moderate evidence')
+        plt.axhline(y=10, color='red', linestyle='--', label='Strong evidence')
+        plt.axhline(y=20, color='darkred', linestyle='--', label='Decisive evidence')
+        plt.xlabel('Model')
+        plt.ylabel('ΔAIC')
+        plt.title('Evidence Thresholds')
+        plt.xticks(range(len(models)), [m.replace('_', '\n') for m in models], rotation=45)
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Plot stability assessment
+        plt.subplot(2, 2, 4)
+        stability = result2['all_models']['pipeline_analysis']['stability_assessment']
+        stability_scores = [stability[model]['mean_relative_uncertainty'] for model in models]
+        plt.bar(range(len(models)), stability_scores, color=colors)
+        plt.axhline(y=0.5, color='orange', linestyle='--', label='Well constrained')
+        plt.axhline(y=1.0, color='red', linestyle='--', label='Stable threshold')
+        plt.xlabel('Model')
+        plt.ylabel('Mean Relative Uncertainty')
+        plt.title('Parameter Stability')
+        plt.xticks(range(len(models)), [m.replace('_', '\n') for m in models], rotation=45)
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.show()
+        
+    except Exception as e:
+        print(f"Complex pipeline test failed: {e}")
+        return False
+    
+    return True
+
 def main():
     """Run all tests."""
-    print("Testing Lorentzian Fitting Package - Steps 1 & 2")
+    print("Testing Lorentzian Fitting Package - Steps 1, 2 & 3")
     print("=" * 60)
     
     success = True
@@ -254,21 +378,28 @@ def main():
     # Test Step 1
     if not test_step1_fitting():
         success = False
-        print("failed!")
+        print("❌ Step 1 failed!")
     else:
-        print("passed!")
+        print("✅ Step 1 passed!")
     
     # Test Step 2
     if not test_step2_metrics():
         success = False
-        print("failed!")
+        print("❌ Step 2 failed!")
     else:
-        print(" passed!")
+        print("✅ Step 2 passed!")
+    
+    # Test Step 3
+    if not test_step3_pipeline():
+        success = False
+        print("❌ Step 3 failed!")
+    else:
+        print("✅ Step 3 passed!")
     
     if success:
-        print("\n All tests passed! ")
+        print("\n🎉 All tests passed! Pipeline ready for use.")
     else:
-        print("\n  Some tests failed")
+        print("\n⚠️  Some tests failed.")
     
     return success
 
