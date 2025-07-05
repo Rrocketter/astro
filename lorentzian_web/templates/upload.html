@@ -1,0 +1,302 @@
+{% extends "base.html" %} {% block title %}Upload Data - Lorentzian Fitting
+Tool{% endblock %} {% block content %}
+<div class="container">
+  <h2><i class="fas fa-upload me-2"></i>Upload Your Data</h2>
+  <p class="text-muted">
+    Upload your astronomical data file for Lorentzian profile fitting analysis.
+  </p>
+
+  <!-- File Upload Area -->
+  <div class="drag-area" id="drag-area">
+    <div class="icon">
+      <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+    </div>
+    <h4>Drag and drop your file here</h4>
+    <p class="text-muted">Or click to browse files</p>
+    <input type="file" id="file-input" accept=".csv,.txt,.dat,.tsv" hidden />
+    <button
+      class="btn btn-primary"
+      onclick="document.getElementById('file-input').click()"
+    >
+      <i class="fas fa-folder-open me-2"></i>Browse Files
+    </button>
+  </div>
+
+  <!-- File Requirements -->
+  <div class="alert alert-info mt-3">
+    <h6><i class="fas fa-info-circle me-2"></i>File Requirements:</h6>
+    <ul class="mb-0">
+      <li><strong>Format:</strong> CSV, TXT, DAT, or TSV files</li>
+      <li>
+        <strong>Columns:</strong> At least 2 columns (X, Y values), optional 3rd
+        column for errors
+      </li>
+      <li><strong>Size:</strong> Maximum 16MB</li>
+      <li>
+        <strong>Data:</strong> Numeric values, at least 10 data points
+        recommended
+      </li>
+    </ul>
+  </div>
+
+  <!-- Example Data Format -->
+  <div class="card mt-3">
+    <div class="card-header">
+      <h6><i class="fas fa-table me-2"></i>Example Data Format</h6>
+    </div>
+    <div class="card-body">
+      <pre class="bg-light p-3">
+# Wavelength (Angstrom), Flux, Error
+6562.8, 1.23, 0.05
+6562.9, 1.45, 0.06
+6563.0, 1.89, 0.07
+6563.1, 2.34, 0.08
+6563.2, 2.78, 0.09
+            </pre
+      >
+      <small class="text-muted">
+        First column: Independent variable (e.g., wavelength, frequency)<br />
+        Second column: Dependent variable (e.g., flux, intensity)<br />
+        Third column (optional): Measurement uncertainties
+      </small>
+    </div>
+  </div>
+
+  <!-- Validation Results -->
+  <div id="validation-results" style="display: none">
+    <!-- Results will be populated here -->
+  </div>
+
+  <!-- Data Preview -->
+  <div id="data-preview" style="display: none">
+    <div class="card mt-3">
+      <div class="card-header">
+        <h6><i class="fas fa-chart-line me-2"></i>Data Preview</h6>
+      </div>
+      <div class="card-body">
+        <div id="preview-plot">
+          <!-- Plot will be inserted here -->
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-success" id="proceed-btn" disabled>
+            <i class="fas fa-arrow-right me-2"></i>Proceed to Visualization
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block extra_js %}
+<script>
+  $(document).ready(function () {
+    const dragArea = $("#drag-area");
+    const fileInput = $("#file-input");
+
+    // Drag and drop functionality
+    dragArea.on("dragover", function (e) {
+      e.preventDefault();
+      dragArea.addClass("dragover");
+    });
+
+    dragArea.on("dragleave", function (e) {
+      e.preventDefault();
+      dragArea.removeClass("dragover");
+    });
+
+    dragArea.on("drop", function (e) {
+      e.preventDefault();
+      dragArea.removeClass("dragover");
+
+      const files = e.originalEvent.dataTransfer.files;
+      if (files.length > 0) {
+        handleFile(files[0]);
+      }
+    });
+
+    // File input change
+    fileInput.on("change", function () {
+      if (this.files.length > 0) {
+        handleFile(this.files[0]);
+      }
+    });
+
+    function handleFile(file) {
+      // Validate file type
+      const allowedTypes = [
+        "text/csv",
+        "text/plain",
+        "text/tab-separated-values",
+      ];
+      const fileExt = file.name.split(".").pop().toLowerCase();
+      const allowedExts = ["csv", "txt", "dat", "tsv"];
+
+      if (!allowedExts.includes(fileExt)) {
+        showError(
+          "Invalid file type. Please upload a CSV, TXT, DAT, or TSV file."
+        );
+        return;
+      }
+
+      // Validate file size (16MB)
+      if (file.size > 16 * 1024 * 1024) {
+        showError("File too large. Maximum size is 16MB.");
+        return;
+      }
+
+      // Upload file
+      uploadFile(file);
+    }
+
+    function uploadFile(file) {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      // Show loading
+      dragArea.html(`
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Processing ${file.name}...</p>
+            </div>
+        `);
+
+      $.ajax({
+        url: "/upload",
+        type: "POST",
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function (response) {
+          handleUploadResponse(response);
+        },
+        error: function (xhr, status, error) {
+          showError("Upload failed: " + error);
+          resetDragArea();
+        },
+      });
+    }
+
+    function handleUploadResponse(response) {
+      resetDragArea();
+
+      if (response.status === "error") {
+        showValidationResults(response);
+      } else {
+        showValidationResults(response);
+        if (response.plot_url) {
+          showDataPreview(response);
+        }
+      }
+    }
+
+    function showValidationResults(response) {
+      const resultsDiv = $("#validation-results");
+      resultsDiv.show();
+
+      let statusClass = "";
+      let statusIcon = "";
+
+      switch (response.status) {
+        case "success":
+          statusClass = "validation-success";
+          statusIcon = "fas fa-check-circle";
+          break;
+        case "warning":
+          statusClass = "validation-warning";
+          statusIcon = "fas fa-exclamation-triangle";
+          break;
+        case "error":
+          statusClass = "validation-error";
+          statusIcon = "fas fa-times-circle";
+          break;
+      }
+
+      let html = `
+            <div class="validation-panel ${statusClass}">
+                <h6><i class="${statusIcon} me-2"></i>Validation Results</h6>
+        `;
+
+      if (response.errors && response.errors.length > 0) {
+        html += '<div class="mt-2"><strong>Errors:</strong><ul>';
+        response.errors.forEach((error) => {
+          html += `<li>${error}</li>`;
+        });
+        html += "</ul></div>";
+      }
+
+      if (response.warnings && response.warnings.length > 0) {
+        html += '<div class="mt-2"><strong>Warnings:</strong><ul>';
+        response.warnings.forEach((warning) => {
+          html += `<li>${warning}</li>`;
+        });
+        html += "</ul></div>";
+      }
+
+      if (response.info && response.info.length > 0) {
+        html += '<div class="mt-2"><strong>Data Information:</strong><ul>';
+        response.info.forEach((info) => {
+          html += `<li>${info}</li>`;
+        });
+        html += "</ul></div>";
+      }
+
+      html += "</div>";
+      resultsDiv.html(html);
+
+      // Enable proceed button if validation successful
+      if (response.status !== "error") {
+        $("#proceed-btn").prop("disabled", false);
+      }
+    }
+
+    function showDataPreview(response) {
+      const previewDiv = $("#data-preview");
+      previewDiv.show();
+
+      $("#preview-plot").html(`
+            <img src="${response.plot_url}" class="img-fluid" alt="Data Preview">
+        `);
+    }
+
+    function showError(message) {
+      const resultsDiv = $("#validation-results");
+      resultsDiv.show();
+      resultsDiv.html(`
+            <div class="validation-panel validation-error">
+                <h6><i class="fas fa-times-circle me-2"></i>Error</h6>
+                <p class="mb-0">${message}</p>
+            </div>
+        `);
+    }
+
+    function resetDragArea() {
+      dragArea.html(`
+            <div class="icon">
+                <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+            </div>
+            <h4>Drag and drop your file here</h4>
+            <p class="text-muted">Or click to browse files</p>
+            <input type="file" id="file-input" accept=".csv,.txt,.dat,.tsv" hidden>
+            <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+                <i class="fas fa-folder-open me-2"></i>Browse Files
+            </button>
+        `);
+
+      // Re-bind file input event
+      $("#file-input").on("change", function () {
+        if (this.files.length > 0) {
+          handleFile(this.files[0]);
+        }
+      });
+    }
+
+    // Proceed button click
+    $(document).on("click", "#proceed-btn", function () {
+      // This will be implemented in Part 2
+      alert("Visualization page will be implemented in Part 2!");
+    });
+  });
+</script>
+{% endblock %}
+-->div>div>small></small>pre></small></div>div>class></i></h6></div>div>ul>li></strong></li>></strong></li>li></strong></li>></strong></li></ul>class></i></h6></div>div>class></i></button>""></p>""></h4>class></i></div>p></!-->class></i></h2></div>/script>div>div>div>div>class></i></button></div>div></div>div>class></i></h6></div>div></!-->div>div>small></small>pre></small></div>div>class></i></h6></div>div>ul>li></strong></li>></strong></li>li></strong></li>></strong></li></ul>class></i></h6></div>div>class></i></button>""></p>""></h4>class></i></div>p></!-->class></i></h2></div>/script>div>div>div>div>class></i></button></div>div></div>div>class></i></h6></div>div></!-->div>div>small></small>pre></small></div>div>class></i></h6></div>div>ul>li></strong></li>></strong></li>li></strong></li>></strong></li></ul>class></i></h6></div>div>class></i></button>""></p>""></h4>class></i></div>p></!-->class></i></h2></div>/script>div>div>div>div>class></i></button></div>div></div>div>class></i></h6></div>div></!-->div>div>small></small>pre></small></div>div>class></i></h6></div>div>ul>li></strong></li>></strong></li>li></strong></li>></strong></li></ul>class></i></h6></div>div>class></i></button>""></p>""></h4>class></i></div>p></!-->class></i></h2></div>/script>div>div>div>div>class></i></button></div>div></div>div>class></i></h6></div>div></!-->div>div>small></small>pre></small></div>div>class></i></h6></div>div>ul>li></strong></li>></strong></li>li></strong></li>></strong></li></ul>class></i></h6></div>div>class></i></button>""></p>""></h4>class></i></div>p></!-->class></i></h2></div>/script>div>div>div>div>class></i></button></div>div></div>div>class></i></h6></div>div></!-->div>div>small></small>pre></small></div>div>class></i></h6></div>div>ul>li></strong></li>></strong></li>li></strong></li>></strong></li></ul>class></i></h6></div>div>class></i></button>""></p>""></h4>class></i></div>p></!-->"">i></i></h2></div>/script>div>div>div>div>class></i></button></div>div></div>div>class></i></h6></div>div></!-->div>div>small></small>pre></small></div>div>class></i></h6></div>div>ul>li></strong></li>></strong></li>li></strong></li>></strong></li></ul>class></i></h6></div>div>class></i></button>""></p>""></h4>class></i></div>p></!-->class></i></h2></div>/script>div>div>div>div>class></i></button></div>div></div>div>class></i></h6></div>div></!-->div>div>small></small>pre></small></div>div>class></i></h6></div>div>ul>li></strong></li>></strong></li>li></strong></li>></strong></li></ul>class></i></h6></div>div>class></i></button>""></p>""></h4>class></i></div>p></!-->class></i></h2></div>script>div>div>div>div>class></i></button></div>div></div>div>class></i></h6></div>div></!-->div>div>small></small>pre></small></div>div>class></i></h6></div>div>ul>li></strong></li>></strong></li>li></strong></li>></strong></li></ul>class></i></h6></div>div>class></i></button>""></p>""></h4>class></i></div>p></!-->class></i></h2></div>""
