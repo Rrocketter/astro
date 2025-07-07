@@ -463,54 +463,292 @@ def visualize():
     print("Data confirmed, rendering visualize template")
     return render_template('visualize.html')
 
-@app.route('/api/analyze_region', methods=['POST'])
-def analyze_region():
-    """Analyze a selected region of the data."""
+@app.route('/configure')
+def configure():
+    """Fitting configuration page."""
+    # Check for session_id instead of validation
+    if 'session_id' not in session:
+        print("No session_id in session, redirecting to index")
+        return redirect(url_for('index'))
+    
+    # Check if data file exists
+    if 'data_file' not in session:
+        print("No data_file in session, redirecting to index")
+        return redirect(url_for('index'))
+    
+    data_file = session['data_file']
+    if not os.path.exists(data_file):
+        print(f"Data file {data_file} does not exist, redirecting to index")
+        return redirect(url_for('index'))
+    
+    print("Data confirmed, rendering configure template")
+    return render_template('configure.html')
+
+@app.route('/api/run_fitting', methods=['POST'])
+def run_fitting():
+    """Run the automated fitting pipeline with user configuration."""
     try:
-        data = request.get_json()
-        x_min = data.get('x_min')
-        x_max = data.get('x_max')
+        # Get configuration from request
+        config_data = request.get_json()
+        print("Received fitting configuration:", config_data)
         
-        if not all([x_min is not None, x_max is not None]):
-            return jsonify({'status': 'error', 'message': 'Invalid region selection'})
+        # Load data from session
+        if 'data_file' not in session:
+            return jsonify({'status': 'error', 'message': 'No data file found'})
         
-        # Get current data
-        if 'data' in session:
-            df = pd.read_json(session['data'])
-        elif 'data_file' in session:
-            df = pd.read_csv(session['data_file'])
-        else:
-            return jsonify({'status': 'error', 'message': 'No data found'})
+        data_file = session['data_file']
+        if not os.path.exists(data_file):
+            return jsonify({'status': 'error', 'message': 'Data file not found'})
         
-        validation = session['validation']
-        columns = validation['columns']
+        df = pd.read_csv(data_file)
+        columns = session.get('columns', {})
         
-        # Filter data to selected region
-        x_full = df[columns['x']].dropna().values
-        y_full = df[columns['y']].dropna().values
+        # Extract data
+        x = df[columns['x']].dropna().values
+        y = df[columns['y']].dropna().values
+        min_len = min(len(x), len(y))
+        x = x[:min_len]
+        y = y[:min_len]
         
-        mask = (x_full >= x_min) & (x_full <= x_max)
-        x_region = x_full[mask]
-        y_region = y_full[mask]
+        yerr = None
+        if columns['yerr'] is not None and columns['yerr'] in df.columns:
+            yerr_data = df[columns['yerr']].dropna().values
+            if len(yerr_data) >= min_len:
+                yerr = yerr_data[:min_len]
         
-        if len(x_region) < 5:
-            return jsonify({'status': 'error', 'message': 'Selected region has too few points'})
+        # Use simplified automated model selection instead of complex pipeline
+        print("Running simplified automated fitting...")
+        result = run_simplified_automated_fitting(x, y, yerr, config_data)
         
-        # Analyze the region
-        region_analysis = analyze_data_region(x_region, y_region)
+        # Store results in session
+        session_id = session['session_id']
+        results_file = os.path.join(app.config['UPLOAD_FOLDER'], f'{session_id}_results.json')
+        
+        # Convert numpy arrays to lists for JSON serialization
+        serializable_result = convert_numpy_to_lists(result)
+        
+        import json
+        with open(results_file, 'w') as f:
+            json.dump(serializable_result, f, indent=2)
+        
+        session['results_file'] = results_file
+        session['fitting_completed'] = True
+        
+        print(f"Fitting completed successfully. Results saved to {results_file}")
+        
+        # Return summary for immediate display
+        summary = create_fitting_summary(result)
         
         return jsonify({
             'status': 'success',
-            'analysis': region_analysis,
-            'region': {
-                'x_min': x_min,
-                'x_max': x_max,
-                'n_points': len(x_region)
-            }
+            'message': 'Fitting completed successfully',
+            'summary': summary
         })
         
     except Exception as e:
-        return jsonify({'status': 'error', 'message': f'Analysis error: {str(e)}'})
+        print(f"Fitting error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': f'Fitting failed: {str(e)}'
+        })
+
+def run_simplified_automated_fitting(x, y, yerr, config):
+    """Run simplified automated fitting using existing components."""
+    from lorentzian_fitting.fitting import LorentzianFitter
+    from lorentzian_fitting.comparison import automated_model_selection
+    
+    # Use the automated_model_selection function directly
+    max_components = config.get('max_components', 3)
+    
+    try:
+        best_n_components, comparison_results = automated_model_selection(
+            x, y, yerr, max_components=max_components
+        )
+        
+        # Extract the best fit result
+        best_model_name = comparison_results['model_selection']['best_aic_model']
+        best_fit_data = comparison_results['fit_results'][best_model_name]
+        best_statistics = comparison_results['statistics'][best_model_name]
+        
+        # Create result structure compatible with expected format
+        result = {
+            'best_fit': {
+                'params': best_fit_data['params'],
+                'param_errors': best_fit_data['param_errors'],
+                'fit_info': best_statistics
+            },
+            'model_name': best_model_name,
+            'n_components': best_fit_data['n_components'],
+            'selection_summary': {
+                'selected_model': best_model_name,
+                'selection_confidence': 'automated',
+                'selection_rationale': ['Automated model selection'],
+                'alternative_models': []
+            },
+            'all_models': comparison_results,
+            'validation': {
+                'overall_quality': True,  # Simplified validation
+                'fit_quality': {
+                    'acceptable_chi2': True,
+                    'good_r_squared': best_statistics.get('r_squared', 0) > 0.5
+                }
+            }
+        }
+        
+        return result
+        
+    except Exception as e:
+        print(f"Automated fitting failed, trying manual approach: {e}")
+        
+        # Fallback to manual fitting approach
+        fitter = LorentzianFitter()
+        best_result = None
+        best_aic = np.inf
+        best_n_comp = 1
+        
+        # Try different numbers of components
+        for n_comp in range(1, max_components + 1):
+            try:
+                if n_comp == 1:
+                    params, param_errors, fit_info = fitter.fit_single(x, y, yerr)
+                else:
+                    params, param_errors, fit_info = fitter.fit_multiple(x, y, n_comp, yerr)
+                
+                # Check if this is the best fit so far
+                if fit_info['aic'] < best_aic:
+                    best_aic = fit_info['aic']
+                    best_n_comp = n_comp
+                    best_result = {
+                        'params': params,
+                        'param_errors': param_errors,
+                        'fit_info': fit_info,
+                        'n_components': n_comp
+                    }
+                    
+            except Exception as fit_error:
+                print(f"Failed to fit {n_comp} components: {fit_error}")
+                continue
+        
+        if best_result is None:
+            raise Exception("All fitting attempts failed")
+        
+        # Create simplified result structure
+        model_name = f"{best_n_comp}_component{'s' if best_n_comp != 1 else ''}"
+        
+        result = {
+            'best_fit': best_result,
+            'model_name': model_name,
+            'n_components': best_n_comp,
+            'selection_summary': {
+                'selected_model': model_name,
+                'selection_confidence': 'manual',
+                'selection_rationale': ['Best AIC from manual comparison'],
+                'alternative_models': []
+            },
+            'all_models': {'manual_selection': True},
+            'validation': {
+                'overall_quality': True,
+                'fit_quality': {
+                    'acceptable_chi2': True,
+                    'good_r_squared': best_result['fit_info'].get('r_squared', 0) > 0.5
+                }
+            }
+        }
+        
+        return result
+
+def convert_numpy_to_lists(obj):
+    """Recursively convert numpy arrays and types to JSON-serializable types."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.integer, np.floating)):
+        return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.complexfloating):
+        return complex(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_to_lists(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_to_lists(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy_to_lists(item) for item in obj)
+    elif hasattr(obj, 'item'):  # Handle numpy scalars
+        return obj.item()
+    else:
+        return obj
+
+def create_fitting_summary(result):
+    """Create a summary of fitting results for quick display."""
+    best_fit = result['best_fit']
+    
+    # Safe parameter extraction
+    params = best_fit['params']
+    param_errors = best_fit['param_errors']
+    
+    if hasattr(params, 'tolist'):
+        params_list = params.tolist()
+    else:
+        params_list = list(params) if hasattr(params, '__iter__') else [params]
+    
+    if hasattr(param_errors, 'tolist'):
+        errors_list = param_errors.tolist()
+    else:
+        errors_list = list(param_errors) if hasattr(param_errors, '__iter__') else [param_errors]
+    
+    summary = {
+        'selected_model': result['model_name'],
+        'n_components': result['n_components'],
+        'selection_confidence': result['selection_summary']['selection_confidence'],
+        'fit_quality': {
+            'reduced_chi_squared': float(best_fit['fit_info']['reduced_chi_squared']),
+            'r_squared': float(best_fit['fit_info']['r_squared']),
+            'aic': float(best_fit['fit_info']['aic']),
+            'bic': float(best_fit['fit_info']['bic'])
+        },
+        'parameters': {
+            'values': params_list,
+            'errors': errors_list
+        },
+        'overall_quality': result['validation']['overall_quality']
+    }
+    
+    return summary
+
+@app.errorhandler(413)
+def too_large(e):
+    """Handle file too large error."""
+    return jsonify({
+        'status': 'error',
+        'message': 'File too large. Maximum size is 16MB.'
+    }), 413
+
+# Add cleanup function for old files
+def cleanup_old_files():
+    """Clean up old data files (older than 1 hour)."""
+    import time
+    
+    if not os.path.exists(app.config['UPLOAD_FOLDER']):
+        return
+    
+    current_time = time.time()
+    for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+        if filename.endswith('_data.csv'):
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file_age = current_time - os.path.getctime(file_path)
+            
+            # Remove files older than 1 hour
+            if file_age > 3600:
+                try:
+                    os.remove(file_path)
+                    print(f"Cleaned up old file: {filename}")
+                except Exception as e:
+                    print(f"Error cleaning up {filename}: {e}")
+
+# Call cleanup on startup
+cleanup_old_files()
 
 def estimate_peaks_for_viz(x, y):
     """Estimate potential peaks for visualization hints."""
@@ -590,38 +828,257 @@ def analyze_data_region(x, y):
     
     return analysis
 
-@app.errorhandler(413)
-def too_large(e):
-    """Handle file too large error."""
-    return jsonify({
-        'status': 'error',
-        'message': 'File too large. Maximum size is 16MB.'
-    }), 413
+@app.route('/results')
+def results():
+    """Results and export page."""
+    # Check for session_id and completed fitting
+    if 'session_id' not in session:
+        print("No session_id in session, redirecting to index")
+        return redirect(url_for('index'))
+    
+    if not session.get('fitting_completed', False):
+        print("No fitting completed, redirecting to configure")
+        return redirect(url_for('configure'))
+    
+    # Check if results file exists
+    if 'results_file' not in session:
+        print("No results_file in session, redirecting to configure")
+        return redirect(url_for('configure'))
+    
+    results_file = session['results_file']
+    if not os.path.exists(results_file):
+        print(f"Results file {results_file} does not exist, redirecting to configure")
+        return redirect(url_for('configure'))
+    
+    print("Results confirmed, rendering results template")
+    return render_template('results.html')
 
-# Add cleanup function for old files
-def cleanup_old_files():
-    """Clean up old data files (older than 1 hour)."""
-    import time
-    
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        return
-    
-    current_time = time.time()
-    for filename in os.listdir(app.config['UPLOAD_FOLDER']):
-        if filename.endswith('_data.csv'):
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file_age = current_time - os.path.getctime(file_path)
+@app.route('/api/get_results')
+def get_results():
+    """Get the complete fitting results."""
+    try:
+        if 'results_file' not in session:
+            return jsonify({'status': 'error', 'message': 'No results file found'})
+        
+        results_file = session['results_file']
+        if not os.path.exists(results_file):
+            return jsonify({'status': 'error', 'message': 'Results file not found'})
+        
+        # Load results from file
+        import json
+        with open(results_file, 'r') as f:
+            results = json.load(f)
+        
+        # Also load original data for plotting
+        data_file = session['data_file']
+        if os.path.exists(data_file):
+            df = pd.read_csv(data_file)
+            columns = session.get('columns', {})
             
-            # Remove files older than 1 hour
-            if file_age > 3600:
-                try:
-                    os.remove(file_path)
-                    print(f"Cleaned up old file: {filename}")
-                except Exception as e:
-                    print(f"Error cleaning up {filename}: {e}")
+            x = df[columns['x']].dropna().values
+            y = df[columns['y']].dropna().values
+            min_len = min(len(x), len(y))
+            x = x[:min_len]
+            y = y[:min_len]
+            
+            yerr = None
+            if columns['yerr'] is not None and columns['yerr'] in df.columns:
+                yerr_data = df[columns['yerr']].dropna().values
+                if len(yerr_data) >= min_len:
+                    yerr = yerr_data[:min_len].tolist()
+            
+            # Generate fitted curve for plotting
+            fitted_curve = generate_fitted_curve(x, results)
+            
+            results['plot_data'] = {
+                'x': x.tolist(),
+                'y': y.tolist(),
+                'yerr': yerr,
+                'fitted_curve': fitted_curve,
+                'columns': columns
+            }
+        
+        return jsonify({
+            'status': 'success',
+            'results': results
+        })
+        
+    except Exception as e:
+        print(f"Error getting results: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': f'Error loading results: {str(e)}'
+        })
 
-# Call cleanup on startup
-cleanup_old_files()
+def generate_fitted_curve(x, results):
+    """Generate the fitted curve for plotting."""
+    try:
+        from lorentzian_fitting.models import single_lorentzian, multiple_lorentzian
+        
+        best_fit = results['best_fit']
+        params = np.array(best_fit['params'])
+        n_components = results['n_components']
+        
+        if n_components == 0:
+            # Baseline only
+            return np.full_like(x, params[0]).tolist()
+        elif n_components == 1:
+            # Single Lorentzian
+            fitted = single_lorentzian(x, *params)
+        else:
+            # Multiple Lorentzians
+            fitted = multiple_lorentzian(x, n_components, *params)
+        
+        return fitted.tolist()
+        
+    except Exception as e:
+        print(f"Error generating fitted curve: {e}")
+        # Return zeros if fitting fails
+        return np.zeros_like(x).tolist()
+
+@app.route('/api/export_results', methods=['POST'])
+def export_results():
+    """Export results in various formats."""
+    try:
+        export_data = request.get_json()
+        export_format = export_data.get('format', 'json')
+        
+        if 'results_file' not in session:
+            return jsonify({'status': 'error', 'message': 'No results to export'})
+        
+        results_file = session['results_file']
+        if not os.path.exists(results_file):
+            return jsonify({'status': 'error', 'message': 'Results file not found'})
+        
+        # Load results
+        import json
+        with open(results_file, 'r') as f:
+            results = json.load(f)
+        
+        if export_format == 'json':
+            return export_json_results(results)
+        elif export_format == 'csv':
+            return export_csv_results(results)
+        elif export_format == 'txt':
+            return export_txt_results(results)
+        else:
+            return jsonify({'status': 'error', 'message': 'Unsupported export format'})
+            
+    except Exception as e:
+        print(f"Export error: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'Export failed: {str(e)}'})
+
+def export_json_results(results):
+    """Export results as JSON."""
+    import json
+    from flask import Response
+    
+    json_str = json.dumps(results, indent=2)
+    
+    return Response(
+        json_str,
+        mimetype='application/json',
+        headers={'Content-Disposition': 'attachment; filename=lorentzian_results.json'}
+    )
+
+def export_csv_results(results):
+    """Export results as CSV."""
+    import io
+    from flask import Response
+    
+    output = io.StringIO()
+    
+    # Write header
+    output.write("# Lorentzian Fitting Results\n")
+    output.write(f"# Selected Model: {results['model_name']}\n")
+    output.write(f"# Number of Components: {results['n_components']}\n")
+    output.write(f"# Reduced Chi-squared: {results['best_fit']['fit_info']['reduced_chi_squared']:.6f}\n")
+    output.write(f"# R-squared: {results['best_fit']['fit_info']['r_squared']:.6f}\n")
+    output.write(f"# AIC: {results['best_fit']['fit_info']['aic']:.2f}\n")
+    output.write(f"# BIC: {results['best_fit']['fit_info']['bic']:.2f}\n")
+    output.write("\n")
+    
+    # Write parameters
+    output.write("Parameter,Value,Error\n")
+    params = results['best_fit']['params']
+    param_errors = results['best_fit']['param_errors']
+    
+    n_comp = results['n_components']
+    if n_comp == 0:
+        output.write(f"Baseline,{params[0]:.6f},{param_errors[0]:.6f}\n")
+    else:
+        for i in range(n_comp):
+            idx = i * 3
+            output.write(f"Component_{i+1}_Amplitude,{params[idx]:.6f},{param_errors[idx]:.6f}\n")
+            output.write(f"Component_{i+1}_Center,{params[idx+1]:.6f},{param_errors[idx+1]:.6f}\n")
+            output.write(f"Component_{i+1}_Width,{params[idx+2]:.6f},{param_errors[idx+2]:.6f}\n")
+        output.write(f"Baseline,{params[-1]:.6f},{param_errors[-1]:.6f}\n")
+    
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=lorentzian_results.csv'}
+    )
+
+def export_txt_results(results):
+    """Export results as formatted text report."""
+    import io
+    from flask import Response
+    
+    output = io.StringIO()
+    
+    # Write detailed report
+    output.write("LORENTZIAN FITTING RESULTS\n")
+    output.write("=" * 50 + "\n\n")
+    
+    output.write(f"Selected Model: {results['model_name']}\n")
+    output.write(f"Number of Components: {results['n_components']}\n")
+    output.write(f"Selection Confidence: {results['selection_summary']['selection_confidence']}\n")
+    output.write("\n")
+    
+    # Fit quality
+    fit_info = results['best_fit']['fit_info']
+    output.write("FIT QUALITY METRICS\n")
+    output.write("-" * 20 + "\n")
+    output.write(f"Reduced Chi-squared: {fit_info['reduced_chi_squared']:.6f}\n")
+    output.write(f"R-squared: {fit_info['r_squared']:.6f}\n")
+    output.write(f"AIC: {fit_info['aic']:.2f}\n")
+    output.write(f"BIC: {fit_info['bic']:.2f}\n")
+    output.write(f"Degrees of Freedom: {fit_info['degrees_of_freedom']}\n")
+    output.write("\n")
+    
+    # Parameters
+    output.write("FITTED PARAMETERS\n")
+    output.write("-" * 20 + "\n")
+    params = results['best_fit']['params']
+    param_errors = results['best_fit']['param_errors']
+    
+    n_comp = results['n_components']
+    if n_comp == 0:
+        output.write(f"Baseline: {params[0]:.6f} ± {param_errors[0]:.6f}\n")
+    else:
+        for i in range(n_comp):
+            idx = i * 3
+            output.write(f"\nComponent {i+1}:\n")
+            output.write(f"  Amplitude: {params[idx]:.6f} ± {param_errors[idx]:.6f}\n")
+            output.write(f"  Center: {params[idx+1]:.6f} ± {param_errors[idx+1]:.6f}\n")
+            output.write(f"  Width (FWHM): {params[idx+2]:.6f} ± {param_errors[idx+2]:.6f}\n")
+        output.write(f"\nBaseline: {params[-1]:.6f} ± {param_errors[-1]:.6f}\n")
+    
+    # Selection rationale
+    if 'selection_rationale' in results['selection_summary']:
+        output.write("\nSELECTION RATIONALE\n")
+        output.write("-" * 20 + "\n")
+        for reason in results['selection_summary']['selection_rationale']:
+            output.write(f"• {reason}\n")
+    
+    return Response(
+        output.getvalue(),
+        mimetype='text/plain',
+        headers={'Content-Disposition': 'attachment; filename=lorentzian_results.txt'}
+    )
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

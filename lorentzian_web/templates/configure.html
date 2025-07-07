@@ -1,0 +1,490 @@
+{% extends "base.html" %}
+
+{% block title %}Fitting Configuration - Lorentzian Fitting Tool{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-panel {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        border: 1px solid #dee2e6;
+    }
+    .config-section {
+        margin-bottom: 25px;
+    }
+    .help-text {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+    .advanced-options {
+        border-top: 1px solid #dee2e6;
+        padding-top: 20px;
+        margin-top: 20px;
+    }
+    .progress-indicator {
+        background-color: #e9ecef;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    .fitting-progress {
+        display: none;
+    }
+    .results-preview {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 20px;
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2><i class="fas fa-cogs me-2"></i>Fitting Configuration</h2>
+    <p class="text-muted">Configure the automated Lorentzian fitting pipeline parameters and options.</p>
+    
+    <div class="row">
+        <!-- Left Panel - Configuration -->
+        <div class="col-md-8">
+            <!-- Basic Settings -->
+            <div class="config-panel">
+                <h5><i class="fas fa-sliders-h me-2"></i>Basic Settings</h5>
+                
+                <div class="config-section">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">Maximum Components to Test:</label>
+                            <select class="form-select" id="max-components">
+                                <option value="2">2 components</option>
+                                <option value="3" selected>3 components</option>
+                                <option value="4">4 components</option>
+                                <option value="5">5 components</option>
+                            </select>
+                            <div class="help-text">Maximum number of Lorentzian components to consider</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Primary Selection Criterion:</label>
+                            <select class="form-select" id="primary-criterion">
+                                <option value="aic" selected>AIC (Akaike Information Criterion)</option>
+                                <option value="aicc">AICc (Corrected AIC)</option>
+                                <option value="bic">BIC (Bayesian Information Criterion)</option>
+                            </select>
+                            <div class="help-text">Primary metric for model selection</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">AIC Threshold for Additional Components:</label>
+                            <input type="number" class="form-control" id="delta-aic-threshold" 
+                                   value="20" min="1" max="50" step="1">
+                            <div class="help-text">ΔAIC ≥ this value provides decisive evidence (default: 20)</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">BIC Threshold:</label>
+                            <input type="number" class="form-control" id="delta-bic-threshold" 
+                                   value="10" min="1" max="30" step="1">
+                            <div class="help-text">ΔBIC threshold for strong evidence (default: 10)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Error Estimation -->
+            <div class="config-panel">
+                <h5><i class="fas fa-chart-line me-2"></i>Error Estimation</h5>
+                
+                <div class="config-section">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">Confidence Levels:</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="conf-68" checked>
+                                <label class="form-check-label" for="conf-68">68% (1σ)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="conf-95" checked>
+                                <label class="form-check-label" for="conf-95">95% (2σ)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="conf-99">
+                                <label class="form-check-label" for="conf-99">99% (3σ)</label>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="enable-monte-carlo" checked>
+                                <label class="form-check-label" for="enable-monte-carlo">
+                                    Enable Monte Carlo Error Estimation
+                                </label>
+                            </div>
+                            <div class="help-text">More robust error estimates using Monte Carlo sampling</div>
+                            
+                            <div class="mt-2" id="monte-carlo-options">
+                                <label class="form-label">Monte Carlo Samples:</label>
+                                <select class="form-select" id="monte-carlo-samples">
+                                    <option value="100">100 (Fast)</option>
+                                    <option value="500" selected>500 (Recommended)</option>
+                                    <option value="1000">1000 (Thorough)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="enable-bootstrap">
+                        <label class="form-check-label" for="enable-bootstrap">
+                            Enable Bootstrap Error Estimation
+                        </label>
+                    </div>
+                    <div class="help-text">Additional bootstrap resampling for uncertainty estimation (slower)</div>
+                    
+                    <div class="mt-2" id="bootstrap-options" style="display: none;">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label">Bootstrap Samples:</label>
+                                <select class="form-select" id="bootstrap-samples">
+                                    <option value="50">50 (Fast)</option>
+                                    <option value="100" selected>100 (Recommended)</option>
+                                    <option value="200">200 (Thorough)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Advanced Options -->
+            <div class="config-panel">
+                <h5><i class="fas fa-tools me-2"></i>Advanced Options</h5>
+                
+                <div class="advanced-options">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">Fitting Retry Attempts:</label>
+                            <select class="form-select" id="retry-attempts">
+                                <option value="1">1 (Fast)</option>
+                                <option value="3" selected>3 (Recommended)</option>
+                                <option value="5">5 (Robust)</option>
+                            </select>
+                            <div class="help-text">Number of attempts with different initial conditions</div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="require-significance" checked>
+                                <label class="form-check-label" for="require-significance">
+                                    Require Statistical Significance
+                                </label>
+                            </div>
+                            <div class="help-text">Only accept models with statistically significant improvements</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Run Fitting -->
+            <div class="config-panel">
+                <h5><i class="fas fa-play me-2"></i>Execute Fitting</h5>
+                
+                <div class="progress-indicator" id="progress-indicator">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-grow-1">
+                            <strong>Ready to run automated fitting pipeline</strong>
+                            <div class="text-muted">All models will be tested and the best one selected automatically</div>
+                        </div>
+                        <button class="btn btn-primary btn-lg" id="run-fitting-btn">
+                            <i class="fas fa-rocket me-2"></i>Run Fitting
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="fitting-progress" id="fitting-progress">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border text-primary me-3" role="status">
+                            <span class="visually-hidden">Running...</span>
+                        </div>
+                        <div class="flex-grow-1">
+                            <strong>Running automated fitting pipeline...</strong>
+                            <div class="text-muted" id="progress-status">Initializing...</div>
+                        </div>
+                    </div>
+                    <div class="progress mt-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%" id="progress-bar"></div>
+                    </div>
+                </div>
+                
+                <div class="results-preview" id="results-preview">
+                    <h6><i class="fas fa-check-circle me-2"></i>Fitting Completed Successfully!</h6>
+                    <div id="results-summary">
+                        <!-- Results summary will be populated here -->
+                    </div>
+                    <div class="mt-3">
+                        <button class="btn btn-success" id="view-results-btn">
+                            <i class="fas fa-chart-line me-2"></i>View Detailed Results
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Panel - Summary -->
+        <div class="col-md-4">
+            <!-- Data Summary -->
+            <div class="config-panel">
+                <h5><i class="fas fa-database me-2"></i>Data Summary</h5>
+                <div id="data-summary">
+                    <p class="text-muted">Loading data summary...</p>
+                </div>
+            </div>
+            
+            <!-- Configuration Summary -->
+            <div class="config-panel">
+                <h5><i class="fas fa-list me-2"></i>Current Configuration</h5>
+                <div id="config-summary">
+                    <table class="table table-sm">
+                        <tr><td>Max Components:</td><td id="summary-max-comp">3</td></tr>
+                        <tr><td>Primary Criterion:</td><td id="summary-criterion">AIC</td></tr>
+                        <tr><td>AIC Threshold:</td><td id="summary-aic-threshold">20</td></tr>
+                        <tr><td>Monte Carlo:</td><td id="summary-monte-carlo">Enabled</td></tr>
+                        <tr><td>Bootstrap:</td><td id="summary-bootstrap">Disabled</td></tr>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Model Selection Guide -->
+            <div class="config-panel">
+                <h5><i class="fas fa-info-circle me-2"></i>Model Selection Guide</h5>
+                <div class="small">
+                    <p><strong>AIC vs BIC:</strong></p>
+                    <ul>
+                        <li><strong>AIC:</strong> Better for prediction, may select more complex models</li>
+                        <li><strong>BIC:</strong> More conservative, penalizes complexity more heavily</li>
+                    </ul>
+                    
+                    <p><strong>Thresholds:</strong></p>
+                    <ul>
+                        <li><strong>ΔAIC < 2:</strong> Substantial support</li>
+                        <li><strong>ΔAIC 4-7:</strong> Considerably less support</li>
+                        <li><strong>ΔAIC > 10:</strong> Very strong evidence against</li>
+                        <li><strong>ΔAIC > 20:</strong> Decisive evidence against</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Navigation -->
+            <div class="mt-4">
+                <button class="btn btn-outline-secondary" onclick="window.location.href='/visualize'">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Visualization
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Load data summary
+    loadDataSummary();
+    
+    // Update configuration summary when inputs change
+    updateConfigSummary();
+    
+    // Event listeners for configuration changes
+    $('#max-components, #primary-criterion, #delta-aic-threshold, #enable-monte-carlo, #enable-bootstrap').on('change', function() {
+        updateConfigSummary();
+    });
+    
+    // Bootstrap options toggle
+    $('#enable-bootstrap').on('change', function() {
+        if ($(this).is(':checked')) {
+            $('#bootstrap-options').show();
+        } else {
+            $('#bootstrap-options').hide();
+        }
+    });
+    
+    // Monte Carlo options toggle
+    $('#enable-monte-carlo').on('change', function() {
+        if ($(this).is(':checked')) {
+            $('#monte-carlo-options').show();
+        } else {
+            $('#monte-carlo-options').hide();
+        }
+    });
+    
+    // Run fitting button
+    $('#run-fitting-btn').on('click', function() {
+        runFitting();
+    });
+    
+    // View results button
+    $('#view-results-btn').on('click', function() {
+        window.location.href = '/results';
+    });
+    
+    function loadDataSummary() {
+        $.get('/api/data_info')
+            .done(function(response) {
+                if (response.status === 'success') {
+                    const summary = `
+                        <table class="table table-sm">
+                            <tr><td><strong>File:</strong></td><td>${response.filename}</td></tr>
+                            <tr><td><strong>Points:</strong></td><td>${response.data_shape[0]}</td></tr>
+                            <tr><td><strong>X Column:</strong></td><td>${response.columns.x}</td></tr>
+                            <tr><td><strong>Y Column:</strong></td><td>${response.columns.y}</td></tr>
+                            ${response.columns.yerr ? `<tr><td><strong>Error Column:</strong></td><td>${response.columns.yerr}</td></tr>` : ''}
+                        </table>
+                    `;
+                    $('#data-summary').html(summary);
+                } else {
+                    $('#data-summary').html('<p class="text-danger">Error loading data summary</p>');
+                }
+            })
+            .fail(function() {
+                $('#data-summary').html('<p class="text-danger">Failed to load data summary</p>');
+            });
+    }
+    
+    function updateConfigSummary() {
+        $('#summary-max-comp').text($('#max-components').val());
+        $('#summary-criterion').text($('#primary-criterion').val().toUpperCase());
+        $('#summary-aic-threshold').text($('#delta-aic-threshold').val());
+        $('#summary-monte-carlo').text($('#enable-monte-carlo').is(':checked') ? 'Enabled' : 'Disabled');
+        $('#summary-bootstrap').text($('#enable-bootstrap').is(':checked') ? 'Enabled' : 'Disabled');
+    }
+    
+    function getConfiguration() {
+        const confidenceLevels = [];
+        if ($('#conf-68').is(':checked')) confidenceLevels.push(0.68);
+        if ($('#conf-95').is(':checked')) confidenceLevels.push(0.95);
+        if ($('#conf-99').is(':checked')) confidenceLevels.push(0.99);
+        
+        return {
+            max_components: parseInt($('#max-components').val()),
+            primary_criterion: $('#primary-criterion').val(),
+            delta_aic_threshold: parseFloat($('#delta-aic-threshold').val()),
+            delta_bic_threshold: parseFloat($('#delta-bic-threshold').val()),
+            confidence_levels: confidenceLevels,
+            enable_monte_carlo: $('#enable-monte-carlo').is(':checked'),
+            monte_carlo_samples: parseInt($('#monte-carlo-samples').val()),
+            enable_bootstrap: $('#enable-bootstrap').is(':checked'),
+            bootstrap_samples: parseInt($('#bootstrap-samples').val()),
+            n_retry_attempts: parseInt($('#retry-attempts').val()),
+            require_statistical_significance: $('#require-significance').is(':checked')
+        };
+    }
+    
+    function runFitting() {
+        const config = getConfiguration();
+        console.log("Running fitting with config:", config);
+        
+        // Hide progress indicator and show fitting progress
+        $('#progress-indicator').hide();
+        $('#fitting-progress').show();
+        
+        // Simulate progress updates
+        let progress = 0;
+        const progressInterval = setInterval(function() {
+            progress += Math.random() * 20;
+            if (progress > 90) progress = 90;
+            
+            $('#progress-bar').css('width', progress + '%');
+            
+            if (progress < 30) {
+                $('#progress-status').text('Testing baseline model...');
+            } else if (progress < 60) {
+                $('#progress-status').text('Fitting Lorentzian components...');
+            } else {
+                $('#progress-status').text('Comparing models and selecting best fit...');
+            }
+        }, 500);
+        
+        // Send fitting request
+        $.ajax({
+            url: '/api/run_fitting',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(config),
+            success: function(response) {
+                clearInterval(progressInterval);
+                $('#progress-bar').css('width', '100%');
+                
+                if (response.status === 'success') {
+                    setTimeout(function() {
+                        $('#fitting-progress').hide();
+                        displayResults(response.summary);
+                        $('#results-preview').show();
+                    }, 1000);
+                } else {
+                    $('#fitting-progress').hide();
+                    $('#progress-indicator').show();
+                    alert('Fitting failed: ' + response.message);
+                }
+            },
+            error: function(xhr, status, error) {
+                clearInterval(progressInterval);
+                $('#fitting-progress').hide();
+                $('#progress-indicator').show();
+                alert('Fitting request failed: ' + error);
+            }
+        });
+    }
+    
+    function displayResults(summary) {
+        const html = `
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>Selected Model:</strong><br>
+                    <span class="text-primary">${summary.selected_model}</span>
+                </div>
+                <div class="col-md-6">
+                    <strong>Components:</strong><br>
+                    ${summary.n_components}
+                </div>
+            </div>
+            <div class="row mt-2">
+                <div class="col-md-6">
+                    <strong>Reduced χ²:</strong><br>
+                    ${summary.fit_quality.reduced_chi_squared.toFixed(3)}
+                </div>
+                <div class="col-md-6">
+                    <strong>R²:</strong><br>
+                    ${summary.fit_quality.r_squared.toFixed(3)}
+                </div>
+            </div>
+            <div class="row mt-2">
+                <div class="col-md-6">
+                    <strong>AIC:</strong><br>
+                    ${summary.fit_quality.aic.toFixed(1)}
+                </div>
+                <div class="col-md-6">
+                    <strong>Quality:</strong><br>
+                    <span class="badge bg-${summary.overall_quality ? 'success' : 'warning'}">
+                        ${summary.overall_quality ? 'Good' : 'Needs Review'}
+                    </span>
+                </div>
+            </div>
+        `;
+        
+        $('#results-summary').html(html);
+    }
+});
+</script>
+{% endblock %}

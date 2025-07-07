@@ -108,28 +108,24 @@
 
     <!-- Step Indicator -->
     <div class="container-fluid mt-3">
-      <div class="step-indicator">
-        <div
-          class="step {% if request.endpoint == 'index' %}active{% elif request.endpoint == 'visualize' %}completed{% else %}completed{% endif %}"
-        >
-          <div class="step-number">1</div>
-          <div class="step-text">Upload Data</div>
+        <div class="step-indicator">
+            <div class="step {% if request.endpoint == 'index' %}active{% else %}completed{% endif %}">
+                <div class="step-number">1</div>
+                <div class="step-text">Upload Data</div>
+            </div>
+            <div class="step {% if request.endpoint == 'visualize' %}active{% elif request.endpoint == 'configure' %}completed{% else %}inactive{% endif %}">
+                <div class="step-number">2</div>
+                <div class="step-text">Visualize</div>
+            </div>
+            <div class="step {% if request.endpoint == 'configure' %}active{% else %}inactive{% endif %}">
+                <div class="step-number">3</div>
+                <div class="step-text">Configure</div>
+            </div>
+            <div class="step inactive">
+                <div class="step-number">4</div>
+                <div class="step-text">Results</div>
+            </div>
         </div>
-        <div
-          class="step {% if request.endpoint == 'visualize' %}active{% else %}inactive{% endif %}"
-        >
-          <div class="step-number">2</div>
-          <div class="step-text">Visualize</div>
-        </div>
-        <div class="step inactive">
-          <div class="step-number">3</div>
-          <div class="step-text">Configure</div>
-        </div>
-        <div class="step inactive">
-          <div class="step-number">4</div>
-          <div class="step-text">Results</div>
-        </div>
-      </div>
     </div>
 
     <!-- Main Content -->
@@ -141,31 +137,24 @@
           <h5>Navigation</h5>
           <ul class="nav nav-pills flex-column">
             <li class="nav-item">
-              <a
-                class="nav-link {% if request.endpoint == 'index' %}active{% endif %}"
-                href="/"
-              >
+              <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="/">
                 <i class="fas fa-upload me-2"></i>Upload Data
               </a>
             </li>
             <li class="nav-item">
-              <a
-                class="nav-link {% if request.endpoint == 'visualize' %}active{% endif %}"
-                href="/visualize"
-                id="nav-visualize"
-              >
+              <a class="nav-link {% if request.endpoint == 'visualize' %}active{% endif %}" href="/visualize" id="nav-visualize">
                 <i class="fas fa-chart-area me-2"></i>Visualize
               </a>
             </li>
             <li class="nav-item">
-              <a class="nav-link disabled" href="#" id="nav-configure">
+              <a class="nav-link {% if request.endpoint == 'configure' %}active{% endif %}" href="/configure" id="nav-configure">
                 <i class="fas fa-cogs me-2"></i>Configure
               </a>
             </li>
             <li class="nav-item">
-              <a class="nav-link disabled" href="#" id="nav-results">
-                <i class="fas fa-chart-line me-2"></i>Results
-              </a>
+                <a class="nav-link {% if request.endpoint == 'results' %}active{% endif %}" href="/results" id="nav-results">
+                    <i class="fas fa-chart-line me-2"></i>Results
+                </a>
             </li>
           </ul>
 
@@ -197,7 +186,12 @@
             console.log("Data info response:", response);
 
             if (response.status !== "error") {
-              $("#nav-visualize").removeClass("disabled");
+              $("#nav-visualize, #nav-configure").removeClass("disabled");
+
+              // Check if fitting is completed to enable results
+              if (response.fitting_completed) {
+                $("#nav-results").removeClass("disabled");
+              }
 
               // Populate data info in sidebar
               const dataShape = response.data_shape || [0, 0];
@@ -236,6 +230,12 @@
             console.log("Failed to get data info:", error);
             $("#data-info").html(`
                     <p class="text-muted"><small>No data loaded</small></p>
+                `);
+          });
+      });
+    </script>
+  </body>
+</html>
                 `);
           });
       });

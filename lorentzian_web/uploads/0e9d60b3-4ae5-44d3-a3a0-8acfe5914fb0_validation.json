@@ -1,0 +1,1 @@
+{"status": "success", "errors": [], "warnings": [], "info": ["Data shape: 81 points", "X range: 6.56e+03 to 6.58e+03", "Y range: 1.02 to 868", "Error column detected: error", "Estimated S/N ratio: 32.6"], "columns": {"x": "wavelength", "y": "flux", "yerr": "error"}, "data_preview": {"n_points": 81, "x_range": [6562.0, 6578.0], "y_range": [1.02, 867.77]}}

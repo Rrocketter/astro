@@ -522,8 +522,8 @@ Fitting Tool{% endblock %} {% block extra_css %}
         })
       );
 
-      // Navigate to configuration page (will be implemented in Part 3)
-      alert("Configuration page will be implemented in Part 3!");
+      // Navigate to configuration page
+      window.location.href = '/configure';
     });
 
     function displayAnalysisResults(response) {
