@@ -1,0 +1,628 @@
+{% extends "base.html" %} {% block title %}Data Visualization - Lorentzian
+Fitting Tool{% endblock %} {% block extra_css %}
+<!-- Plotly.js for interactive plots -->
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<style>
+  .control-panel {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+  }
+  .plot-container {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 10px;
+    background-color: white;
+  }
+  .analysis-panel {
+    background-color: #e9ecef;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+  }
+  .peak-marker {
+    cursor: pointer;
+  }
+  .selection-info {
+    font-size: 0.9em;
+    color: #6c757d;
+  }
+</style>
+{% endblock %} {% block content %}
+<div class="container-fluid">
+  <h2><i class="fas fa-chart-area me-2"></i>Interactive Data Visualization</h2>
+  <p class="text-muted">
+    Explore your data, identify peaks, and prepare for fitting configuration.
+  </p>
+
+  <div class="row">
+    <!-- Left Panel - Controls -->
+    <div class="col-md-4">
+      <!-- Plot Controls -->
+      <div class="control-panel">
+        <h5><i class="fas fa-sliders-h me-2"></i>Plot Controls</h5>
+
+        <div class="mb-3">
+          <label class="form-label">Plot Type:</label>
+          <select class="form-select" id="plot-type">
+            <option value="scatter">Scatter Plot</option>
+            <option value="line">Line Plot</option>
+            <option value="both" selected>Scatter + Line</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="show-errors"
+              checked
+            />
+            <label class="form-check-label" for="show-errors">
+              Show Error Bars
+            </label>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="show-peaks"
+              checked
+            />
+            <label class="form-check-label" for="show-peaks">
+              Highlight Detected Peaks
+            </label>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <button class="btn btn-outline-primary btn-sm" id="reset-zoom">
+            <i class="fas fa-search-minus me-1"></i>Reset Zoom
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" id="auto-scale">
+            <i class="fas fa-expand-arrows-alt me-1"></i>Auto Scale
+          </button>
+        </div>
+      </div>
+
+      <!-- Peak Detection -->
+      <div class="control-panel">
+        <h5><i class="fas fa-mountain me-2"></i>Peak Detection</h5>
+        <div id="peaks-info">
+          <p class="text-muted">Loading peak detection...</p>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Sensitivity:</label>
+          <input
+            type="range"
+            class="form-range"
+            id="peak-sensitivity"
+            min="0.1"
+            max="2.0"
+            step="0.1"
+            value="0.5"
+          />
+          <div class="d-flex justify-content-between">
+            <small>Low</small>
+            <small>High</small>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-sm" id="redetect-peaks">
+          <i class="fas fa-sync me-1"></i>Re-detect Peaks
+        </button>
+      </div>
+
+      <!-- Region Selection -->
+      <div class="control-panel">
+        <h5><i class="fas fa-crop me-2"></i>Region Selection</h5>
+        <p class="selection-info">
+          Click and drag on the plot to select a region for detailed analysis.
+        </p>
+
+        <div id="selection-info" style="display: none">
+          <div class="alert alert-info">
+            <strong>Selected Region:</strong><br />
+            X: <span id="sel-x-range">-</span><br />
+            Y: <span id="sel-y-range">-</span><br />
+            Points: <span id="sel-n-points">-</span>
+          </div>
+
+          <button class="btn btn-success btn-sm" id="analyze-region">
+            <i class="fas fa-chart-line me-1"></i>Analyze Region
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" id="clear-selection">
+            <i class="fas fa-times me-1"></i>Clear
+          </button>
+        </div>
+      </div>
+
+      <!-- Data Statistics -->
+      <div class="control-panel">
+        <h5><i class="fas fa-chart-bar me-2"></i>Data Statistics</h5>
+        <div id="data-stats">
+          <p class="text-muted">Loading statistics...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Panel - Plot -->
+    <div class="col-md-8">
+      <div class="plot-container">
+        <div id="main-plot" style="height: 600px">
+          <div class="d-flex justify-content-center align-items-center h-100">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading plot...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analysis Results -->
+      <div id="analysis-results" style="display: none">
+        <div class="analysis-panel">
+          <h6><i class="fas fa-microscope me-2"></i>Region Analysis</h6>
+          <div id="analysis-content">
+            <!-- Analysis results will be populated here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="mt-4">
+        <button
+          class="btn btn-outline-secondary"
+          onclick="window.location.href='/'"
+        >
+          <i class="fas fa-arrow-left me-2"></i>Back to Upload
+        </button>
+        <button class="btn btn-success" id="proceed-configure" disabled>
+          <i class="fas fa-arrow-right me-2"></i>Proceed to Configuration
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block extra_js %}
+<script>
+  $(document).ready(function () {
+    let currentData = null;
+    let currentPeaks = null;
+    let selectedRegion = null;
+
+    console.log("Visualization page loaded");
+
+    // Load data when page loads
+    loadData();
+
+    function loadData() {
+      console.log("Loading data...");
+
+      $.get("/api/get_data")
+        .done(function (response) {
+          console.log("Data response:", response);
+
+          if (response.status === "success") {
+            currentData = response.data;
+            currentPeaks = response.peaks;
+
+            console.log("Data loaded successfully:", currentData);
+
+            updateDataStats();
+            updatePeaksInfo();
+            createPlot();
+            $("#proceed-configure").prop("disabled", false);
+          } else {
+            console.error("Failed to load data:", response.message);
+            showError("Failed to load data: " + response.message);
+
+            // Redirect back to upload after showing error
+            setTimeout(function () {
+              window.location.href = "/";
+            }, 3000);
+          }
+        })
+        .fail(function (xhr, status, error) {
+          console.error("AJAX error:", status, error);
+          console.error("Response text:", xhr.responseText);
+
+          showError(
+            "Failed to connect to server. Please check your connection."
+          );
+
+          // Redirect back to upload after showing error
+          setTimeout(function () {
+            window.location.href = "/";
+          }, 3000);
+        });
+    }
+
+    function updateDataStats() {
+      const data = currentData;
+      const html = `
+            <table class="table table-sm">
+                <tr><td><strong>Data Points:</strong></td><td>${
+                  data.n_points
+                }</td></tr>
+                <tr><td><strong>X Range:</strong></td><td>${data.x[0].toFixed(
+                  3
+                )} to ${data.x[data.x.length - 1].toFixed(3)}</td></tr>
+                <tr><td><strong>Y Range:</strong></td><td>${Math.min(
+                  ...data.y
+                ).toFixed(3)} to ${Math.max(...data.y).toFixed(3)}</td></tr>
+                <tr><td><strong>Columns:</strong></td><td>${data.columns.x}, ${
+        data.columns.y
+      }${data.columns.yerr ? ", " + data.columns.yerr : ""}</td></tr>
+            </table>
+        `;
+      $("#data-stats").html(html);
+    }
+
+    function updatePeaksInfo() {
+      const peaks = currentPeaks;
+      let html = `<p><strong>Detected Peaks:</strong> ${peaks.n_peaks}</p>`;
+
+      if (peaks.detected_peaks.length > 0) {
+        html +=
+          '<div class="mt-2"><small><strong>Peak Locations:</strong></small><ul class="list-unstyled mt-1">';
+        peaks.detected_peaks.forEach((peak, i) => {
+          html += `<li><small>Peak ${i + 1}: X=${peak.x.toFixed(
+            3
+          )}, Y=${peak.y.toFixed(3)}</small></li>`;
+        });
+        html += "</ul></div>";
+      } else {
+        html +=
+          '<p class="text-muted"><small>No significant peaks detected. Try adjusting sensitivity.</small></p>';
+      }
+
+      $("#peaks-info").html(html);
+    }
+
+    function createPlot() {
+      console.log("Creating plot with data:", currentData);
+
+      if (!currentData || !currentData.x || !currentData.y) {
+        showError("Invalid data for plotting");
+        return;
+      }
+
+      // Main data trace
+      let traces = [];
+
+      // Determine plot type
+      const plotType = $("#plot-type").val();
+      const showErrors = $("#show-errors").is(":checked");
+
+      if (plotType === "scatter" || plotType === "both") {
+        const scatterTrace = {
+          x: currentData.x,
+          y: currentData.y,
+          mode: "markers",
+          type: "scatter",
+          name: "Data",
+          marker: {
+            size: 4,
+            color: "#1f77b4",
+          },
+        };
+
+        if (showErrors && currentData.yerr) {
+          scatterTrace.error_y = {
+            type: "data",
+            array: currentData.yerr,
+            visible: true,
+            color: "#1f77b4",
+            thickness: 1,
+          };
+        }
+
+        traces.push(scatterTrace);
+      }
+
+      if (plotType === "line" || plotType === "both") {
+        traces.push({
+          x: currentData.x,
+          y: currentData.y,
+          mode: "lines",
+          type: "scatter",
+          name: plotType === "both" ? "Trend" : "Data",
+          line: {
+            color: plotType === "both" ? "#ff7f0e" : "#1f77b4",
+            width: plotType === "both" ? 1 : 2,
+          },
+        });
+      }
+
+      // Add peak markers
+      if (
+        $("#show-peaks").is(":checked") &&
+        currentPeaks.detected_peaks.length > 0
+      ) {
+        const peakX = currentPeaks.detected_peaks.map((p) => p.x);
+        const peakY = currentPeaks.detected_peaks.map((p) => p.y);
+
+        traces.push({
+          x: peakX,
+          y: peakY,
+          mode: "markers",
+          type: "scatter",
+          name: "Detected Peaks",
+          marker: {
+            symbol: "triangle-up",
+            size: 10,
+            color: "#d62728",
+            line: {
+              color: "#000000",
+              width: 1,
+            },
+          },
+        });
+      }
+
+      const layout = {
+        title: "Interactive Data Visualization",
+        xaxis: {
+          title: currentData.columns.x,
+          showgrid: true,
+          zeroline: false,
+        },
+        yaxis: {
+          title: currentData.columns.y,
+          showgrid: true,
+          zeroline: false,
+        },
+        hovermode: "closest",
+        dragmode: "select",
+        selectdirection: "horizontal",
+      };
+
+      const config = {
+        displayModeBar: true,
+        modeBarButtonsToAdd: [
+          {
+            name: "Select Region",
+            icon: Plotly.Icons.selectbox,
+            click: function () {
+              Plotly.relayout("main-plot", { dragmode: "select" });
+            },
+          },
+        ],
+        modeBarButtonsToRemove: ["lasso2d", "autoScale2d"],
+      };
+
+      Plotly.newPlot("main-plot", traces, layout, config);
+
+      // Handle selection events
+      document
+        .getElementById("main-plot")
+        .on("plotly_selected", function (eventData) {
+          if (eventData && eventData.range) {
+            selectedRegion = {
+              x_min: eventData.range.x[0],
+              x_max: eventData.range.x[1],
+            };
+            updateSelectionInfo();
+          }
+        });
+
+      // Handle deselect
+      document.getElementById("main-plot").on("plotly_deselect", function () {
+        clearSelection();
+      });
+    }
+
+    function updateSelectionInfo() {
+      if (!selectedRegion) return;
+
+      const data = currentData;
+      const mask = data.x.filter(
+        (x, i) => x >= selectedRegion.x_min && x <= selectedRegion.x_max
+      );
+      const selectedY = data.y.filter(
+        (y, i) =>
+          data.x[i] >= selectedRegion.x_min && data.x[i] <= selectedRegion.x_max
+      );
+
+      $("#sel-x-range").text(
+        `${selectedRegion.x_min.toFixed(3)} to ${selectedRegion.x_max.toFixed(
+          3
+        )}`
+      );
+      if (selectedY.length > 0) {
+        $("#sel-y-range").text(
+          `${Math.min(...selectedY).toFixed(3)} to ${Math.max(
+            ...selectedY
+          ).toFixed(3)}`
+        );
+      }
+      $("#sel-n-points").text(mask.length);
+
+      $("#selection-info").show();
+    }
+
+    function clearSelection() {
+      selectedRegion = null;
+      $("#selection-info").hide();
+      $("#analysis-results").hide();
+      Plotly.restyle("main-plot", { selectedpoints: [null] });
+    }
+
+    // Event handlers
+    $("#plot-type, #show-errors, #show-peaks").on("change", function () {
+      createPlot();
+    });
+
+    $("#reset-zoom").on("click", function () {
+      Plotly.relayout("main-plot", {
+        "xaxis.autorange": true,
+        "yaxis.autorange": true,
+      });
+    });
+
+    $("#auto-scale").on("click", function () {
+      Plotly.Plots.resize("main-plot");
+    });
+
+    $("#clear-selection").on("click", function () {
+      clearSelection();
+    });
+
+    $("#analyze-region").on("click", function () {
+      if (!selectedRegion) return;
+
+      const btn = $(this);
+      btn
+        .prop("disabled", true)
+        .html('<i class="fas fa-spinner fa-spin me-1"></i>Analyzing...');
+
+      $.post(
+        "/api/analyze_region",
+        {
+          x_min: selectedRegion.x_min,
+          x_max: selectedRegion.x_max,
+        },
+        function (response) {
+          if (response.status === "success") {
+            displayAnalysisResults(response);
+          } else {
+            showError("Analysis failed: " + response.message);
+          }
+        }
+      ).always(function () {
+        btn
+          .prop("disabled", false)
+          .html('<i class="fas fa-chart-line me-1"></i>Analyze Region');
+      });
+    });
+
+    $("#redetect-peaks").on("click", function () {
+      // This would implement peak re-detection with different sensitivity
+      showInfo("Peak re-detection will be implemented in future versions");
+    });
+
+    $("#proceed-configure").on("click", function () {
+      // Store current visualization state and proceed
+      sessionStorage.setItem(
+        "visualization_state",
+        JSON.stringify({
+          plot_settings: {
+            plot_type: $("#plot-type").val(),
+            show_errors: $("#show-errors").is(":checked"),
+            show_peaks: $("#show-peaks").is(":checked"),
+          },
+          detected_peaks: currentPeaks,
+          selected_region: selectedRegion,
+        })
+      );
+
+      // Navigate to configuration page (will be implemented in Part 3)
+      alert("Configuration page will be implemented in Part 3!");
+    });
+
+    function displayAnalysisResults(response) {
+      const analysis = response.analysis;
+
+      let html = `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Statistics</h6>
+                    <table class="table table-sm">
+                        <tr><td>X Range:</td><td>${analysis.statistics.x_range[0].toFixed(
+                          3
+                        )} to ${analysis.statistics.x_range[1].toFixed(
+        3
+      )}</td></tr>
+                        <tr><td>Y Range:</td><td>${analysis.statistics.y_range[0].toFixed(
+                          3
+                        )} to ${analysis.statistics.y_range[1].toFixed(
+        3
+      )}</td></tr>
+                        <tr><td>Mean Y:</td><td>${analysis.statistics.y_mean.toFixed(
+                          3
+                        )}</td></tr>
+                        <tr><td>Std Y:</td><td>${analysis.statistics.y_std.toFixed(
+                          3
+                        )}</td></tr>
+                        <tr><td>Points:</td><td>${
+                          analysis.statistics.n_points
+                        }</td></tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h6>Signal Analysis</h6>
+                    <table class="table table-sm">
+                        <tr><td>Baseline:</td><td>${analysis.signal.baseline.toFixed(
+                          3
+                        )}</td></tr>
+                        <tr><td>Peak:</td><td>${analysis.signal.peak.toFixed(
+                          3
+                        )}</td></tr>
+                        <tr><td>Amplitude:</td><td>${analysis.signal.amplitude.toFixed(
+                          3
+                        )}</td></tr>
+                        <tr><td>S/N Ratio:</td><td>${analysis.signal.snr_estimate.toFixed(
+                          2
+                        )}</td></tr>
+                    </table>
+                </div>
+            </div>
+            <div class="mt-3">
+                <h6>Suggestions</h6>
+                <div class="alert alert-info">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Recommended Components:</strong> ${
+                      analysis.suggestions.n_components
+                    }<br>
+                    <strong>Expected Fit Quality:</strong> ${
+                      analysis.suggestions.fit_quality_expectation
+                    }
+                </div>
+            </div>
+        `;
+
+      $("#analysis-content").html(html);
+      $("#analysis-results").show();
+    }
+
+    function showError(message) {
+      console.error("Error:", message);
+
+      // Create a more visible error display
+      const errorHtml = `
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+
+      // Insert error at top of page
+      $(".container-fluid").prepend(errorHtml);
+
+      // Also update the plot container
+      $("#main-plot").html(`
+            <div class="d-flex justify-content-center align-items-center h-100 text-danger">
+                <div class="text-center">
+                    <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                    <h5>Error Loading Data</h5>
+                    <p>${message}</p>
+                    <a href="/" class="btn btn-primary">Return to Upload</a>
+                </div>
+            </div>
+        `);
+    }
+
+    function showInfo(message) {
+      // Simple info display - could be enhanced with toast notifications
+      alert("Info: " + message);
+    }
+  });
+</script>
+{% endblock %}

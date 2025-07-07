@@ -110,12 +110,14 @@
     <div class="container-fluid mt-3">
       <div class="step-indicator">
         <div
-          class="step {% if request.endpoint == 'index' %}active{% else %}completed{% endif %}"
+          class="step {% if request.endpoint == 'index' %}active{% elif request.endpoint == 'visualize' %}completed{% else %}completed{% endif %}"
         >
           <div class="step-number">1</div>
           <div class="step-text">Upload Data</div>
         </div>
-        <div class="step inactive">
+        <div
+          class="step {% if request.endpoint == 'visualize' %}active{% else %}inactive{% endif %}"
+        >
           <div class="step-number">2</div>
           <div class="step-text">Visualize</div>
         </div>
@@ -147,7 +149,11 @@
               </a>
             </li>
             <li class="nav-item">
-              <a class="nav-link disabled" href="#" id="nav-visualize">
+              <a
+                class="nav-link {% if request.endpoint == 'visualize' %}active{% endif %}"
+                href="/visualize"
+                id="nav-visualize"
+              >
                 <i class="fas fa-chart-area me-2"></i>Visualize
               </a>
             </li>
@@ -182,5 +188,57 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
     {% block extra_js %}{% endblock %}
+    <script>
+      // Update navigation state based on session
+      $(document).ready(function () {
+        // Check if data is loaded to enable navigation
+        $.get("/api/data_info")
+          .done(function (response) {
+            console.log("Data info response:", response);
+
+            if (response.status !== "error") {
+              $("#nav-visualize").removeClass("disabled");
+
+              // Populate data info in sidebar
+              const dataShape = response.data_shape || [0, 0];
+              const columns = response.columns || {};
+
+              $("#data-info").html(`
+                        <h6>Current Data</h6>
+                        <small>
+                            <strong>File:</strong> ${response.filename}<br>
+                            <strong>Points:</strong> ${dataShape[0]}<br>
+                            <strong>Columns:</strong> ${dataShape[1]}<br>
+                            <strong>X:</strong> ${columns.x || "N/A"}<br>
+                            <strong>Y:</strong> ${columns.y || "N/A"}<br>
+                            ${
+                              columns.yerr
+                                ? "<strong>Errors:</strong> " +
+                                  columns.yerr +
+                                  "<br>"
+                                : ""
+                            }
+                        </small>
+                        <div class="mt-2">
+                            <a href="/clear" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-trash me-1"></i>Clear Data
+                            </a>
+                        </div>
+                    `);
+            } else {
+              console.log("No data loaded:", response.message);
+              $("#data-info").html(`
+                        <p class="text-muted"><small>No data loaded</small></p>
+                    `);
+            }
+          })
+          .fail(function (xhr, status, error) {
+            console.log("Failed to get data info:", error);
+            $("#data-info").html(`
+                    <p class="text-muted"><small>No data loaded</small></p>
+                `);
+          });
+      });
+    </script>
   </body>
 </html>

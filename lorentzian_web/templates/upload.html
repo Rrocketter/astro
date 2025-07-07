@@ -293,8 +293,41 @@ Tool{% endblock %} {% block content %}
 
     // Proceed button click
     $(document).on("click", "#proceed-btn", function () {
-      // This will be implemented in Part 2
-      alert("Visualization page will be implemented in Part 2!");
+      console.log("Proceed button clicked");
+
+      // Show loading state
+      const btn = $(this);
+      const originalText = btn.html();
+      btn
+        .prop("disabled", true)
+        .html('<i class="fas fa-spinner fa-spin me-2"></i>Loading...');
+
+      // Add a small delay to ensure session is saved, then check data
+      setTimeout(function () {
+        $.get("/api/data_info")
+          .done(function (response) {
+            console.log("Data info response:", response);
+            if (response.status === "success") {
+              console.log("Data confirmed, navigating to visualize");
+              console.log("Data file exists, shape:", response.data_shape);
+              window.location.href = "/visualize";
+            } else {
+              console.error("No data in session:", response.message);
+              alert(
+                "Error: " +
+                  response.message +
+                  ". Please upload your data again."
+              );
+              btn.prop("disabled", false).html(originalText);
+            }
+          })
+          .fail(function (xhr, status, error) {
+            console.error("Failed to check data:", error);
+            console.error("Response:", xhr.responseText);
+            alert("Error: Could not verify data. Please try again.");
+            btn.prop("disabled", false).html(originalText);
+          });
+      }, 500); // 500ms delay
     });
   });
 </script>
