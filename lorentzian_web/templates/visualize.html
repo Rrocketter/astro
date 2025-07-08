@@ -66,7 +66,8 @@ Fitting Tool{% endblock %} {% block extra_css %}
           </div>
         </div>
 
-        <div class="mb-3">
+        <!-- COMMENTED OUT: Peak Detection checkbox -->
+        <!-- <div class="mb-3">
           <div class="form-check">
             <input
               class="form-check-input"
@@ -78,7 +79,7 @@ Fitting Tool{% endblock %} {% block extra_css %}
               Highlight Detected Peaks
             </label>
           </div>
-        </div>
+        </div> -->
 
         <div class="mb-3">
           <button class="btn btn-outline-primary btn-sm" id="reset-zoom">
@@ -90,8 +91,8 @@ Fitting Tool{% endblock %} {% block extra_css %}
         </div>
       </div>
 
-      <!-- Peak Detection -->
-      <div class="control-panel">
+      <!-- COMMENTED OUT: Peak Detection Panel -->
+      <!-- <div class="control-panel">
         <h5><i class="fas fa-mountain me-2"></i>Peak Detection</h5>
         <div id="peaks-info">
           <p class="text-muted">Loading peak detection...</p>
@@ -117,7 +118,7 @@ Fitting Tool{% endblock %} {% block extra_css %}
         <button class="btn btn-primary btn-sm" id="redetect-peaks">
           <i class="fas fa-sync me-1"></i>Re-detect Peaks
         </button>
-      </div>
+      </div> -->
 
       <!-- Region Selection -->
       <div class="control-panel">
@@ -156,6 +157,7 @@ Fitting Tool{% endblock %} {% block extra_css %}
     <div class="col-md-8">
       <div class="plot-container">
         <div id="main-plot" style="height: 600px">
+          <!-- Fixed loading state -->
           <div class="d-flex justify-content-center align-items-center h-100">
             <div class="spinner-border text-primary" role="status">
               <span class="visually-hidden">Loading plot...</span>
@@ -193,7 +195,8 @@ Fitting Tool{% endblock %} {% block extra_css %}
 <script>
   $(document).ready(function () {
     let currentData = null;
-    let currentPeaks = null;
+    // COMMENTED OUT: Peak detection variables
+    // let currentPeaks = null;
     let selectedRegion = null;
 
     console.log("Visualization page loaded");
@@ -204,18 +207,31 @@ Fitting Tool{% endblock %} {% block extra_css %}
     function loadData() {
       console.log("Loading data...");
 
+      // Show loading state
+      $("#main-plot").html(`
+        <div class="d-flex justify-content-center align-items-center h-100">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading plot...</span>
+          </div>
+        </div>
+      `);
+
       $.get("/api/get_data")
         .done(function (response) {
           console.log("Data response:", response);
 
           if (response.status === "success") {
             currentData = response.data;
-            currentPeaks = response.peaks;
 
             console.log("Data loaded successfully:", currentData);
 
+            // Ensure we have valid data structure
+            if (!currentData.x || !currentData.y) {
+              showError("Invalid data structure received from server");
+              return;
+            }
+
             updateDataStats();
-            updatePeaksInfo();
             createPlot();
             $("#proceed-configure").prop("disabled", false);
           } else {
@@ -264,26 +280,21 @@ Fitting Tool{% endblock %} {% block extra_css %}
       $("#data-stats").html(html);
     }
 
-    function updatePeaksInfo() {
-      const peaks = currentPeaks;
-      let html = `<p><strong>Detected Peaks:</strong> ${peaks.n_peaks}</p>`;
-
-      if (peaks.detected_peaks.length > 0) {
-        html +=
-          '<div class="mt-2"><small><strong>Peak Locations:</strong></small><ul class="list-unstyled mt-1">';
-        peaks.detected_peaks.forEach((peak, i) => {
-          html += `<li><small>Peak ${i + 1}: X=${peak.x.toFixed(
-            3
-          )}, Y=${peak.y.toFixed(3)}</small></li>`;
-        });
-        html += "</ul></div>";
-      } else {
-        html +=
-          '<p class="text-muted"><small>No significant peaks detected. Try adjusting sensitivity.</small></p>';
-      }
-
-      $("#peaks-info").html(html);
-    }
+    // COMMENTED OUT: Peak detection function
+    // function updatePeaksInfo() {
+    //   const peaks = currentPeaks;
+    //   let html = `<p><strong>Detected Peaks:</strong> ${peaks.n_peaks}</p>`;
+    //   if (peaks.detected_peaks.length > 0) {
+    //     html += '<div class="mt-2"><small><strong>Peak Locations:</strong></small><ul class="list-unstyled mt-1">';
+    //     peaks.detected_peaks.forEach((peak, i) => {
+    //       html += `<li><small>Peak ${i + 1}: X=${peak.x.toFixed(3)}, Y=${peak.y.toFixed(3)}</small></li>`;
+    //     });
+    //     html += '</ul></div>';
+    //   } else {
+    //     html += '<p class="text-muted"><small>No significant peaks detected. Try adjusting sensitivity.</small></p>';
+    //   }
+    //   $("#peaks-info").html(html);
+    // }
 
     function createPlot() {
       console.log("Creating plot with data:", currentData);
@@ -292,6 +303,9 @@ Fitting Tool{% endblock %} {% block extra_css %}
         showError("Invalid data for plotting");
         return;
       }
+
+      // Clear the loading spinner first
+      $("#main-plot").empty();
 
       // Main data trace
       let traces = [];
@@ -340,32 +354,6 @@ Fitting Tool{% endblock %} {% block extra_css %}
         });
       }
 
-      // Add peak markers
-      if (
-        $("#show-peaks").is(":checked") &&
-        currentPeaks.detected_peaks.length > 0
-      ) {
-        const peakX = currentPeaks.detected_peaks.map((p) => p.x);
-        const peakY = currentPeaks.detected_peaks.map((p) => p.y);
-
-        traces.push({
-          x: peakX,
-          y: peakY,
-          mode: "markers",
-          type: "scatter",
-          name: "Detected Peaks",
-          marker: {
-            symbol: "triangle-up",
-            size: 10,
-            color: "#d62728",
-            line: {
-              color: "#000000",
-              width: 1,
-            },
-          },
-        });
-      }
-
       const layout = {
         title: "Interactive Data Visualization",
         xaxis: {
@@ -381,6 +369,12 @@ Fitting Tool{% endblock %} {% block extra_css %}
         hovermode: "closest",
         dragmode: "select",
         selectdirection: "horizontal",
+        margin: {
+          l: 60,
+          r: 30,
+          t: 60,
+          b: 60,
+        },
       };
 
       const config = {
@@ -395,27 +389,43 @@ Fitting Tool{% endblock %} {% block extra_css %}
           },
         ],
         modeBarButtonsToRemove: ["lasso2d", "autoScale2d"],
+        responsive: true,
       };
 
-      Plotly.newPlot("main-plot", traces, layout, config);
+      // Create the plot and handle any errors
+      try {
+        Plotly.newPlot("main-plot", traces, layout, config)
+          .then(function () {
+            console.log("Plot created successfully");
 
-      // Handle selection events
-      document
-        .getElementById("main-plot")
-        .on("plotly_selected", function (eventData) {
-          if (eventData && eventData.range) {
-            selectedRegion = {
-              x_min: eventData.range.x[0],
-              x_max: eventData.range.x[1],
-            };
-            updateSelectionInfo();
-          }
-        });
+            // Handle selection events
+            document
+              .getElementById("main-plot")
+              .on("plotly_selected", function (eventData) {
+                if (eventData && eventData.range) {
+                  selectedRegion = {
+                    x_min: eventData.range.x[0],
+                    x_max: eventData.range.x[1],
+                  };
+                  updateSelectionInfo();
+                }
+              });
 
-      // Handle deselect
-      document.getElementById("main-plot").on("plotly_deselect", function () {
-        clearSelection();
-      });
+            // Handle deselect
+            document
+              .getElementById("main-plot")
+              .on("plotly_deselect", function () {
+                clearSelection();
+              });
+          })
+          .catch(function (error) {
+            console.error("Error creating plot:", error);
+            showError("Failed to create plot: " + error.message);
+          });
+      } catch (error) {
+        console.error("Error in createPlot:", error);
+        showError("Failed to create plot: " + error.message);
+      }
     }
 
     function updateSelectionInfo() {
@@ -454,8 +464,8 @@ Fitting Tool{% endblock %} {% block extra_css %}
       Plotly.restyle("main-plot", { selectedpoints: [null] });
     }
 
-    // Event handlers
-    $("#plot-type, #show-errors, #show-peaks").on("change", function () {
+    // Event handlers - UPDATED: Removed peak detection references
+    $("#plot-type, #show-errors").on("change", function () {
       createPlot();
     });
 
@@ -502,10 +512,10 @@ Fitting Tool{% endblock %} {% block extra_css %}
       });
     });
 
-    $("#redetect-peaks").on("click", function () {
-      // This would implement peak re-detection with different sensitivity
-      showInfo("Peak re-detection will be implemented in future versions");
-    });
+    // COMMENTED OUT: Peak re-detection
+    // $("#redetect-peaks").on("click", function () {
+    //   showInfo("Peak re-detection will be implemented in future versions");
+    // });
 
     $("#proceed-configure").on("click", function () {
       // Store current visualization state and proceed
@@ -515,15 +525,17 @@ Fitting Tool{% endblock %} {% block extra_css %}
           plot_settings: {
             plot_type: $("#plot-type").val(),
             show_errors: $("#show-errors").is(":checked"),
-            show_peaks: $("#show-peaks").is(":checked"),
+            // COMMENTED OUT: Peak detection
+            // show_peaks: $("#show-peaks").is(":checked"),
           },
-          detected_peaks: currentPeaks,
+          // COMMENTED OUT: Peak detection
+          // detected_peaks: currentPeaks,
           selected_region: selectedRegion,
         })
       );
 
       // Navigate to configuration page
-      window.location.href = '/configure';
+      window.location.href = "/configure";
     });
 
     function displayAnalysisResults(response) {
@@ -606,12 +618,12 @@ Fitting Tool{% endblock %} {% block extra_css %}
       // Insert error at top of page
       $(".container-fluid").prepend(errorHtml);
 
-      // Also update the plot container
+      // Also update the plot container to show error
       $("#main-plot").html(`
             <div class="d-flex justify-content-center align-items-center h-100 text-danger">
                 <div class="text-center">
                     <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
-                    <h5>Error Loading Data</h5>
+                    <h5>Error Loading Plot</h5>
                     <p>${message}</p>
                     <a href="/" class="btn btn-primary">Return to Upload</a>
                 </div>

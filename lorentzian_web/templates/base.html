@@ -200,7 +200,7 @@
               $("#data-info").html(`
                         <h6>Current Data</h6>
                         <small>
-                            <strong>File:</strong> ${response.filename}<br>
+                            <strong>File:</strong> ${response.filename || "Unknown"}<br>
                             <strong>Points:</strong> ${dataShape[0]}<br>
                             <strong>Columns:</strong> ${dataShape[1]}<br>
                             <strong>X:</strong> ${columns.x || "N/A"}<br>
@@ -220,7 +220,7 @@
                         </div>
                     `);
             } else {
-              console.log("No data loaded:", response.message);
+              console.log("No data loaded:", response.message || "Unknown error");
               $("#data-info").html(`
                         <p class="text-muted"><small>No data loaded</small></p>
                     `);
@@ -230,12 +230,6 @@
             console.log("Failed to get data info:", error);
             $("#data-info").html(`
                     <p class="text-muted"><small>No data loaded</small></p>
-                `);
-          });
-      });
-    </script>
-  </body>
-</html>
                 `);
           });
       });
