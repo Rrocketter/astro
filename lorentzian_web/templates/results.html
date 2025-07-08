@@ -1,0 +1,466 @@
+{% extends "base.html" %} {% block title %}Fitting Results - Lorentzian Fitting
+Tool{% endblock %} {% block extra_css %}
+<!-- Plotly.js for interactive plots -->
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<style>
+  .results-panel {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #dee2e6;
+  }
+  .plot-container {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 10px;
+    background-color: white;
+    margin-bottom: 20px;
+  }
+  .success-badge {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+  }
+  .parameter-table {
+    font-family: "Courier New", monospace;
+    font-size: 0.9em;
+  }
+  .export-section {
+    background-color: #e9ecef;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 20px;
+  }
+</style>
+{% endblock %} {% block content %}
+<div class="container-fluid">
+  <h2><i class="fas fa-chart-line me-2"></i>Fitting Results</h2>
+  <p class="text-muted">
+    Detailed results from the automated Lorentzian fitting analysis.
+  </p>
+
+  <!-- Loading indicator -->
+  <div id="loading-indicator" class="text-center py-5">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">Loading results...</span>
+    </div>
+    <p class="mt-2">Loading fitting results...</p>
+  </div>
+
+  <!-- Results content -->
+  <div id="results-content" style="display: none">
+    <!-- Success banner -->
+    <div class="success-badge">
+      <div class="d-flex align-items-center">
+        <i class="fas fa-check-circle fa-2x text-success me-3"></i>
+        <div>
+          <h5 class="mb-1">Fitting Completed Successfully!</h5>
+          <p class="mb-0" id="success-message">
+            Automated model selection has identified the best fit for your data.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <!-- Left Panel - Results Summary -->
+      <div class="col-md-4">
+        <!-- Model Selection Summary -->
+        <div class="results-panel">
+          <h5><i class="fas fa-trophy me-2"></i>Selected Model</h5>
+          <div id="model-summary">
+            <!-- Model info will be populated here -->
+          </div>
+        </div>
+
+        <!-- Fit Quality -->
+        <div class="results-panel">
+          <h5><i class="fas fa-chart-bar me-2"></i>Fit Quality</h5>
+          <div id="fit-quality">
+            <!-- Quality metrics will be populated here -->
+          </div>
+        </div>
+
+        <!-- Export Options -->
+        <div class="results-panel">
+          <h5><i class="fas fa-download me-2"></i>Export Results</h5>
+          <div class="export-section">
+            <p class="mb-3">Download your results in various formats:</p>
+            <div class="d-grid gap-2">
+              <button class="btn btn-outline-primary" id="export-json">
+                <i class="fas fa-file-code me-2"></i>JSON (Complete Data)
+              </button>
+              <button class="btn btn-outline-success" id="export-csv">
+                <i class="fas fa-file-csv me-2"></i>CSV (Parameters)
+              </button>
+              <button class="btn btn-outline-info" id="export-txt">
+                <i class="fas fa-file-alt me-2"></i>TXT (Report)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Panel - Plots and Details -->
+      <div class="col-md-8">
+        <!-- Main Results Plot -->
+        <div class="plot-container">
+          <div id="results-plot" style="height: 500px">
+            <div class="d-flex justify-content-center align-items-center h-100">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading plot...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Residuals Plot -->
+        <div class="plot-container">
+          <div id="residuals-plot" style="height: 300px">
+            <div class="d-flex justify-content-center align-items-center h-100">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading residuals...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detailed Parameters -->
+        <div class="results-panel">
+          <h5><i class="fas fa-table me-2"></i>Fitted Parameters</h5>
+          <div id="parameters-table">
+            <!-- Parameters table will be populated here -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="mt-4">
+      <button
+        class="btn btn-outline-secondary"
+        onclick="window.location.href='/configure'"
+      >
+        <i class="fas fa-arrow-left me-2"></i>Back to Configuration
+      </button>
+      <button class="btn btn-primary" onclick="window.location.href='/'">
+        <i class="fas fa-plus me-2"></i>Analyze New Data
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block extra_js %}
+<script>
+  $(document).ready(function () {
+    let currentResults = null;
+
+    // Load results when page loads
+    loadResults();
+
+    function loadResults() {
+      $.get("/api/get_results")
+        .done(function (response) {
+          if (response.status === "success") {
+            currentResults = response.results;
+            displayResults();
+            $("#loading-indicator").hide();
+            $("#results-content").show();
+          } else {
+            showError("Failed to load results: " + response.message);
+          }
+        })
+        .fail(function (xhr, status, error) {
+          showError("Failed to connect to server: " + error);
+        });
+    }
+
+    function displayResults() {
+      const results = currentResults;
+
+      // Update success message
+      $("#success-message").text(
+        `Best model: ${results.model_name} with ${results.selection_summary.selection_confidence} confidence.`
+      );
+
+      // Display model summary
+      displayModelSummary(results);
+
+      // Display fit quality
+      displayFitQuality(results);
+
+      // Display parameters table
+      displayParametersTable(results);
+
+      // Create plots
+      createResultsPlot(results);
+      createResidualsPlot(results);
+    }
+
+    function displayModelSummary(results) {
+      const html = `
+            <table class="table table-sm">
+                <tr><td><strong>Model:</strong></td><td>${
+                  results.model_name
+                }</td></tr>
+                <tr><td><strong>Components:</strong></td><td>${
+                  results.n_components
+                }</td></tr>
+                <tr><td><strong>Confidence:</strong></td><td class="text-capitalize">${
+                  results.selection_summary.selection_confidence
+                }</td></tr>
+                <tr><td><strong>Selection:</strong></td><td>${results.selection_summary.selection_rationale.join(
+                  ", "
+                )}</td></tr>
+            </table>
+        `;
+      $("#model-summary").html(html);
+    }
+
+    function displayFitQuality(results) {
+      const fit = results.best_fit.fit_info;
+      const isGoodFit = results.validation.overall_quality;
+
+      const html = `
+            <table class="table table-sm">
+                <tr>
+                    <td><strong>Reduced χ²:</strong></td>
+                    <td>${fit.reduced_chi_squared.toFixed(4)}</td>
+                </tr>
+                <tr>
+                    <td><strong>R²:</strong></td>
+                    <td>${fit.r_squared.toFixed(4)}</td>
+                </tr>
+                <tr>
+                    <td><strong>AIC:</strong></td>
+                    <td>${fit.aic.toFixed(2)}</td>
+                </tr>
+                <tr>
+                    <td><strong>BIC:</strong></td>
+                    <td>${fit.bic.toFixed(2)}</td>
+                </tr>
+                <tr>
+                    <td><strong>DOF:</strong></td>
+                    <td>${fit.degrees_of_freedom}</td>
+                </tr>
+            </table>
+            <div class="mt-2">
+                <span class="badge bg-${isGoodFit ? "success" : "warning"}">
+                    ${isGoodFit ? "Good Quality Fit" : "Review Required"}
+                </span>
+            </div>
+        `;
+      $("#fit-quality").html(html);
+    }
+
+    function displayParametersTable(results) {
+      const params = results.best_fit.params;
+      const errors = results.best_fit.param_errors;
+      const nComp = results.n_components;
+
+      let html = '<table class="table table-sm parameter-table">';
+      html +=
+        "<thead><tr><th>Parameter</th><th>Value</th><th>Error</th><th>Relative Error</th></tr></thead>";
+      html += "<tbody>";
+
+      if (nComp === 0) {
+        const relError = Math.abs(errors[0] / params[0]) * 100;
+        html += `<tr>
+                <td>Baseline</td>
+                <td>${params[0].toFixed(6)}</td>
+                <td>±${errors[0].toFixed(6)}</td>
+                <td>${relError.toFixed(1)}%</td>
+            </tr>`;
+      } else {
+        for (let i = 0; i < nComp; i++) {
+          const idx = i * 3;
+
+          // Amplitude
+          let relError = Math.abs(errors[idx] / params[idx]) * 100;
+          html += `<tr>
+                    <td>Component ${i + 1} Amplitude</td>
+                    <td>${params[idx].toFixed(6)}</td>
+                    <td>±${errors[idx].toFixed(6)}</td>
+                    <td>${relError.toFixed(1)}%</td>
+                </tr>`;
+
+          // Center
+          relError = Math.abs(errors[idx + 1] / params[idx + 1]) * 100;
+          html += `<tr>
+                    <td>Component ${i + 1} Center</td>
+                    <td>${params[idx + 1].toFixed(6)}</td>
+                    <td>±${errors[idx + 1].toFixed(6)}</td>
+                    <td>${relError.toFixed(1)}%</td>
+                </tr>`;
+
+          // Width
+          relError = Math.abs(errors[idx + 2] / params[idx + 2]) * 100;
+          html += `<tr>
+                    <td>Component ${i + 1} Width (FWHM)</td>
+                    <td>${params[idx + 2].toFixed(6)}</td>
+                    <td>±${errors[idx + 2].toFixed(6)}</td>
+                    <td>${relError.toFixed(1)}%</td>
+                </tr>`;
+        }
+
+        // Baseline
+        const baseIdx = params.length - 1;
+        const relError = Math.abs(errors[baseIdx] / params[baseIdx]) * 100;
+        html += `<tr>
+                <td>Baseline</td>
+                <td>${params[baseIdx].toFixed(6)}</td>
+                <td>±${errors[baseIdx].toFixed(6)}</td>
+                <td>${relError.toFixed(1)}%</td>
+            </tr>`;
+      }
+
+      html += "</tbody></table>";
+      $("#parameters-table").html(html);
+    }
+
+    function createResultsPlot(results) {
+      const plotData = results.plot_data;
+
+      const traces = [
+        {
+          x: plotData.x,
+          y: plotData.y,
+          mode: "markers",
+          type: "scatter",
+          name: "Data",
+          marker: { size: 4, color: "#1f77b4" },
+          error_y: plotData.yerr
+            ? {
+                type: "data",
+                array: plotData.yerr,
+                visible: true,
+              }
+            : undefined,
+        },
+        {
+          x: plotData.x,
+          y: plotData.fitted_curve,
+          mode: "lines",
+          type: "scatter",
+          name: "Fitted Model",
+          line: { color: "#d62728", width: 2 },
+        },
+      ];
+
+      const layout = {
+        title: `${results.model_name} - Fitted Model`,
+        xaxis: { title: plotData.columns.x },
+        yaxis: { title: plotData.columns.y },
+        showlegend: true,
+        hovermode: "closest",
+      };
+
+      Plotly.newPlot("results-plot", traces, layout, { displayModeBar: true });
+    }
+
+    function createResidualsPlot(results) {
+      const plotData = results.plot_data;
+      const residuals = plotData.y.map((y, i) => y - plotData.fitted_curve[i]);
+
+      const trace = {
+        x: plotData.x,
+        y: residuals,
+        mode: "markers",
+        type: "scatter",
+        name: "Residuals",
+        marker: { size: 4, color: "#2ca02c" },
+      };
+
+      const layout = {
+        title: "Fit Residuals",
+        xaxis: { title: plotData.columns.x },
+        yaxis: { title: "Residuals" },
+        shapes: [
+          {
+            type: "line",
+            x0: Math.min(...plotData.x),
+            x1: Math.max(...plotData.x),
+            y0: 0,
+            y1: 0,
+            line: { color: "red", dash: "dash" },
+          },
+        ],
+      };
+
+      Plotly.newPlot("residuals-plot", [trace], layout, {
+        displayModeBar: false,
+      });
+    }
+
+    // Export handlers
+    $("#export-json").on("click", function () {
+      exportResults("json");
+    });
+
+    $("#export-csv").on("click", function () {
+      exportResults("csv");
+    });
+
+    $("#export-txt").on("click", function () {
+      exportResults("txt");
+    });
+
+    function exportResults(format) {
+      const btn = $(`#export-${format}`);
+      const originalText = btn.html();
+      btn
+        .prop("disabled", true)
+        .html('<i class="fas fa-spinner fa-spin me-2"></i>Exporting...');
+
+      $.ajax({
+        url: "/api/export_results",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ format: format }),
+        xhrFields: {
+          responseType: "blob",
+        },
+        success: function (data, status, xhr) {
+          // Create download link
+          const blob = new Blob([data]);
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+
+          // Get filename from response headers
+          const disposition = xhr.getResponseHeader("Content-Disposition");
+          const filename = disposition
+            ? disposition.split("filename=")[1]
+            : `results.${format}`;
+          a.download = filename;
+
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        },
+        error: function () {
+          alert("Export failed. Please try again.");
+        },
+        complete: function () {
+          btn.prop("disabled", false).html(originalText);
+        },
+      });
+    }
+
+    function showError(message) {
+      $("#loading-indicator").html(`
+            <div class="text-danger">
+                <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                <h5>Error Loading Results</h5>
+                <p>${message}</p>
+                <a href="/configure" class="btn btn-primary">Return to Configuration</a>
+            </div>
+        `);
+    }
+  });
+</script>
+{% endblock %}
