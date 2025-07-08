@@ -1,5 +1,6 @@
 Flask==3.0.0
-numpy>=1.24.0
-scipy>=1.11.0
-matplotlib>=3.7.0
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0
+matplotlib>=3.6.0
 lmfit>=1.2.0
+gunicorn>=21.2.0
