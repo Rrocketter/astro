@@ -418,6 +418,55 @@ def index():
     """Main page with data upload interface."""
     return render_template('upload.html')
 
+@app.route('/api/analyze_region', methods=['POST'])
+def analyze_region():
+    """Analyze a selected region of the data."""
+    try:
+        data = request.get_json()
+        x_min = data.get('x_min')
+        x_max = data.get('x_max')
+        
+        if not all([x_min is not None, x_max is not None]):
+            return jsonify({'status': 'error', 'message': 'Invalid region selection'})
+        
+        # Get current data
+        if 'data_file' not in session:
+            return jsonify({'status': 'error', 'message': 'No data found'})
+        
+        data_file = session['data_file']
+        if not os.path.exists(data_file):
+            return jsonify({'status': 'error', 'message': 'Data file not found'})
+        
+        df = pd.read_csv(data_file)
+        columns = session.get('columns', {})
+        
+        # Filter data to selected region
+        x_full = df[columns['x']].dropna().values
+        y_full = df[columns['y']].dropna().values
+        
+        mask = (x_full >= x_min) & (x_full <= x_max)
+        x_region = x_full[mask]
+        y_region = y_full[mask]
+        
+        if len(x_region) < 5:
+            return jsonify({'status': 'error', 'message': 'Selected region has too few points'})
+        
+        # Analyze the region
+        region_analysis = analyze_data_region(x_region, y_region)
+        
+        return jsonify({
+            'status': 'success',
+            'analysis': region_analysis,
+            'region': {
+                'x_min': x_min,
+                'x_max': x_max,
+                'n_points': len(x_region)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Analysis error: {str(e)}'})
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     """Handle file upload and validation."""
