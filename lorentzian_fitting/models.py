@@ -7,6 +7,8 @@ and related utilities for parameter handling.
 
 import numpy as np
 from typing import List, Tuple, Union
+from scipy.optimize import curve_fit
+from scipy.signal import find_peaks
 
 
 def single_lorentzian(x: np.ndarray, amplitude: float, center: float, 
@@ -206,3 +208,72 @@ def generate_initial_guess(x: np.ndarray, y: np.ndarray,
     params.append(baseline_guess)
     
     return params
+
+
+def fit_lorentzian(x: np.ndarray, y: np.ndarray, n_components: int = 1, 
+                  initial_guess: List[float] = None) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Fit Lorentzian function(s) to data using scipy.optimize.curve_fit.
+    
+    Parameters:
+    -----------
+    x : array-like
+        Independent variable
+    y : array-like
+        Dependent variable
+    n_components : int
+        Number of Lorentzian components to fit
+    initial_guess : list, optional
+        Initial parameter guess
+        
+    Returns:
+    --------
+    tuple
+        (fitted_parameters, parameter_covariance)
+    """
+    if initial_guess is None:
+        initial_guess = generate_initial_guess(x, y, n_components)
+    
+    bounds = get_parameter_bounds(x, y, n_components)
+    
+    try:
+        if n_components == 1:
+            popt, pcov = curve_fit(
+                lambda x, amp, center, width, baseline: single_lorentzian(x, amp, center, width, baseline),
+                x, y, p0=initial_guess, bounds=bounds
+            )
+        else:
+            popt, pcov = curve_fit(
+                multiple_lorentzian,
+                x, y, p0=initial_guess, bounds=bounds
+            )
+        
+        return popt, pcov
+    
+    except Exception as e:
+        raise RuntimeError(f"Fitting failed: {str(e)}")
+
+
+def find_peaks_auto(x: np.ndarray, y: np.ndarray, min_height: float = None) -> List[int]:
+    """
+    Automatically find peaks in the data for initial parameter estimation.
+    
+    Parameters:
+    -----------
+    x : array-like
+        Independent variable
+    y : array-like
+        Dependent variable
+    min_height : float, optional
+        Minimum peak height
+        
+    Returns:
+    --------
+    list
+        Indices of detected peaks
+    """
+    if min_height is None:
+        min_height = np.std(y) * 2
+    
+    peaks, _ = find_peaks(np.abs(y - np.median(y)), height=min_height)
+    return peaks.tolist()
