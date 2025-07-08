@@ -8,7 +8,7 @@ Lorentzian profile fitting with model selection.
 import os
 import io
 import base64
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -16,11 +16,10 @@ matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 from werkzeug.utils import secure_filename
 import uuid
-
-# Import our fitting package
-import sys
-sys.path.append('/Users/rahulgupta/Developer/astro')
-from lorentzian_fitting.pipeline import AutomatedPipeline, PipelineSettings
+import warnings
+from scipy.optimize import curve_fit
+from scipy.signal import find_peaks
+from scipy import stats
 
 app = Flask(__name__)
 
@@ -35,6 +34,244 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'txt', 'csv', 'dat', 'tsv'}
+
+# Built-in Lorentzian fitting functions
+def lorentzian(x, amplitude, center, width, baseline=0):
+    """Single Lorentzian function."""
+    return amplitude / (1 + ((x - center) / (width / 2))**2) + baseline
+
+def multi_lorentzian(x, n_components, *params):
+    """Multiple Lorentzian function."""
+    if n_components == 0:
+        return np.full_like(x, params[0])
+    
+    baseline = params[-1]
+    result = np.full_like(x, baseline)
+    
+    for i in range(n_components):
+        idx = i * 3
+        amplitude = params[idx]
+        center = params[idx + 1]
+        width = params[idx + 2]
+        result += amplitude / (1 + ((x - center) / (width / 2))**2)
+    
+    return result
+
+class LorentzianFitter:
+    """Built-in Lorentzian fitting class."""
+    
+    def __init__(self, max_iterations=1000):
+        self.max_iterations = max_iterations
+    
+    def fit_single(self, x, y, yerr=None):
+        """Fit single Lorentzian."""
+        # Initial guess
+        baseline = np.median(y)
+        amplitude = np.max(y) - baseline
+        center = x[np.argmax(y)]
+        width = (np.max(x) - np.min(x)) / 10
+        
+        initial_guess = [amplitude, center, width, baseline]
+        
+        try:
+            if yerr is not None:
+                popt, pcov = curve_fit(lorentzian, x, y, p0=initial_guess, 
+                                     sigma=yerr, maxfev=self.max_iterations)
+            else:
+                popt, pcov = curve_fit(lorentzian, x, y, p0=initial_guess, 
+                                     maxfev=self.max_iterations)
+            
+            param_errors = np.sqrt(np.diag(pcov))
+            
+            # Calculate fit statistics
+            y_fit = lorentzian(x, *popt)
+            residuals = y - y_fit
+            
+            if yerr is not None:
+                chi_squared = np.sum((residuals / yerr)**2)
+            else:
+                chi_squared = np.sum(residuals**2)
+            
+            dof = len(x) - len(popt)
+            reduced_chi_squared = chi_squared / dof if dof > 0 else np.inf
+            
+            r_squared = 1 - np.sum(residuals**2) / np.sum((y - np.mean(y))**2)
+            
+            # Information criteria
+            n_params = len(popt)
+            aic = chi_squared + 2 * n_params
+            bic = chi_squared + n_params * np.log(len(x))
+            
+            fit_info = {
+                'chi_squared': chi_squared,
+                'reduced_chi_squared': reduced_chi_squared,
+                'r_squared': r_squared,
+                'aic': aic,
+                'bic': bic,
+                'degrees_of_freedom': dof,
+                'n_params': n_params
+            }
+            
+            return popt, param_errors, fit_info
+            
+        except Exception as e:
+            raise RuntimeError(f"Fitting failed: {str(e)}")
+    
+    def fit_multiple(self, x, y, n_components, yerr=None):
+        """Fit multiple Lorentzians."""
+        if n_components == 0:
+            # Baseline only
+            baseline = np.mean(y)
+            popt = [baseline]
+            pcov = [[np.var(y) / len(y)]]
+            param_errors = [np.sqrt(pcov[0][0])]
+            
+            residuals = y - baseline
+            if yerr is not None:
+                chi_squared = np.sum((residuals / yerr)**2)
+            else:
+                chi_squared = np.sum(residuals**2)
+            
+            dof = len(x) - 1
+            reduced_chi_squared = chi_squared / dof if dof > 0 else np.inf
+            r_squared = 1 - np.sum(residuals**2) / np.sum((y - np.mean(y))**2)
+            
+            fit_info = {
+                'chi_squared': chi_squared,
+                'reduced_chi_squared': reduced_chi_squared,
+                'r_squared': r_squared,
+                'aic': chi_squared + 2,
+                'bic': chi_squared + np.log(len(x)),
+                'degrees_of_freedom': dof,
+                'n_params': 1
+            }
+            
+            return np.array(popt), np.array(param_errors), fit_info
+        
+        # Initial guess for multiple components
+        baseline = np.median(y)
+        y_detrended = y - baseline
+        
+        # Find peaks for initial centers
+        peaks, _ = find_peaks(y_detrended, prominence=np.std(y_detrended) * 0.3)
+        
+        initial_guess = []
+        for i in range(n_components):
+            if i < len(peaks):
+                center = x[peaks[i]]
+                amplitude = y[peaks[i]] - baseline
+            else:
+                center = x[i * len(x) // n_components]
+                amplitude = np.max(y_detrended) / n_components
+            
+            width = (np.max(x) - np.min(x)) / (n_components * 5)
+            initial_guess.extend([amplitude, center, width])
+        
+        initial_guess.append(baseline)
+        
+        def multi_lorentz_wrapper(x, *params):
+            return multi_lorentzian(x, n_components, *params)
+        
+        try:
+            if yerr is not None:
+                popt, pcov = curve_fit(multi_lorentz_wrapper, x, y, p0=initial_guess,
+                                     sigma=yerr, maxfev=self.max_iterations)
+            else:
+                popt, pcov = curve_fit(multi_lorentz_wrapper, x, y, p0=initial_guess,
+                                     maxfev=self.max_iterations)
+            
+            param_errors = np.sqrt(np.diag(pcov))
+            
+            # Calculate fit statistics
+            y_fit = multi_lorentz_wrapper(x, *popt)
+            residuals = y - y_fit
+            
+            if yerr is not None:
+                chi_squared = np.sum((residuals / yerr)**2)
+            else:
+                chi_squared = np.sum(residuals**2)
+            
+            dof = len(x) - len(popt)
+            reduced_chi_squared = chi_squared / dof if dof > 0 else np.inf
+            
+            r_squared = 1 - np.sum(residuals**2) / np.sum((y - np.mean(y))**2)
+            
+            # Information criteria
+            n_params = len(popt)
+            aic = chi_squared + 2 * n_params
+            bic = chi_squared + n_params * np.log(len(x))
+            
+            fit_info = {
+                'chi_squared': chi_squared,
+                'reduced_chi_squared': reduced_chi_squared,
+                'r_squared': r_squared,
+                'aic': aic,
+                'bic': bic,
+                'degrees_of_freedom': dof,
+                'n_params': n_params
+            }
+            
+            return popt, param_errors, fit_info
+            
+        except Exception as e:
+            raise RuntimeError(f"Multi-component fitting failed: {str(e)}")
+
+def automated_model_selection(x, y, yerr=None, max_components=3):
+    """Simplified automated model selection."""
+    fitter = LorentzianFitter()
+    results = {}
+    
+    for n_comp in range(0, max_components + 1):
+        model_name = f"{n_comp}_component{'s' if n_comp != 1 else ''}"
+        
+        try:
+            if n_comp == 0 or n_comp == 1:
+                if n_comp == 0:
+                    # Baseline only
+                    params, param_errors, fit_info = fitter.fit_multiple(x, y, 0, yerr)
+                else:
+                    params, param_errors, fit_info = fitter.fit_single(x, y, yerr)
+            else:
+                params, param_errors, fit_info = fitter.fit_multiple(x, y, n_comp, yerr)
+            
+            results[model_name] = {
+                'params': params,
+                'param_errors': param_errors,
+                'n_components': n_comp,
+                'fit_info': fit_info
+            }
+            
+        except Exception as e:
+            print(f"Failed to fit {n_comp} components: {e}")
+            continue
+    
+    if not results:
+        raise RuntimeError("All model fits failed")
+    
+    # Find best model by AIC
+    best_aic = np.inf
+    best_model = None
+    
+    for model_name, result in results.items():
+        if result['fit_info']['aic'] < best_aic:
+            best_aic = result['fit_info']['aic']
+            best_model = model_name
+    
+    # Calculate delta AIC
+    delta_aic = {}
+    for model_name, result in results.items():
+        delta_aic[model_name] = result['fit_info']['aic'] - best_aic
+    
+    comparison_results = {
+        'fit_results': results,
+        'statistics': {name: result['fit_info'] for name, result in results.items()},
+        'model_selection': {
+            'best_aic_model': best_model,
+            'delta_aic': delta_aic
+        }
+    }
+    
+    return results[best_model]['n_components'], comparison_results
 
 def allowed_file(filename):
     """Check if file extension is allowed."""
@@ -557,11 +794,7 @@ def run_fitting():
         })
 
 def run_simplified_automated_fitting(x, y, yerr, config):
-    """Run simplified automated fitting using existing components."""
-    from lorentzian_fitting.fitting import LorentzianFitter
-    from lorentzian_fitting.comparison import automated_model_selection
-    
-    # Use the automated_model_selection function directly
+    """Run simplified automated fitting using built-in components."""
     max_components = config.get('max_components', 3)
     
     try:
@@ -586,7 +819,7 @@ def run_simplified_automated_fitting(x, y, yerr, config):
             'selection_summary': {
                 'selected_model': best_model_name,
                 'selection_confidence': 'automated',
-                'selection_rationale': ['Automated model selection'],
+                'selection_rationale': ['Automated model selection using AIC'],
                 'alternative_models': []
             },
             'all_models': comparison_results,
@@ -917,8 +1150,6 @@ def get_results():
 def generate_fitted_curve(x, results):
     """Generate the fitted curve for plotting."""
     try:
-        from lorentzian_fitting.models import single_lorentzian, multiple_lorentzian
-        
         best_fit = results['best_fit']
         params = np.array(best_fit['params'])
         n_components = results['n_components']
@@ -928,10 +1159,10 @@ def generate_fitted_curve(x, results):
             return np.full_like(x, params[0]).tolist()
         elif n_components == 1:
             # Single Lorentzian
-            fitted = single_lorentzian(x, *params)
+            fitted = lorentzian(x, *params)
         else:
             # Multiple Lorentzians
-            fitted = multiple_lorentzian(x, n_components, *params)
+            fitted = multi_lorentzian(x, n_components, *params)
         
         return fitted.tolist()
         
