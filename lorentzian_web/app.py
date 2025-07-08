@@ -1362,6 +1362,64 @@ def export_txt_results(results):
         headers={'Content-Disposition': 'attachment; filename=lorentzian_results.txt'}
     )
 
+@app.route('/use_sample_data', methods=['POST'])
+def use_sample_data():
+    """Load and process the sample data file as if it was uploaded."""
+    try:
+        sample_path = os.path.join(os.path.dirname(__file__), 'test_data_single_peak.csv')
+        if not os.path.exists(sample_path):
+            return jsonify({'status': 'error', 'message': 'Sample data file not found'})
+        df = pd.read_csv(sample_path)
+        # Generate unique session ID for this sample usage
+        session_id = str(uuid.uuid4())
+        session.permanent = True
+        filename = 'test_data_single_peak.csv'
+        # Validate data
+        validator = DataValidator()
+        validation_result = validator.validate_data(df)
+        if validation_result['status'] != 'error':
+            # Store data in file
+            data_file = os.path.join(app.config['UPLOAD_FOLDER'], f'{session_id}_data.csv')
+            df.to_csv(data_file, index=False)
+            session['session_id'] = session_id
+            session['data_file'] = data_file
+            session['filename'] = filename
+            session['data_shape'] = df.shape
+            session['status'] = validation_result['status']
+            session['columns'] = validation_result['columns']
+            session['data_preview'] = validation_result.get('data_preview', {})
+            # Store validation messages separately
+            validation_file = os.path.join(app.config['UPLOAD_FOLDER'], f'{session_id}_validation.json')
+            import json
+            with open(validation_file, 'w') as f:
+                json.dump(validation_result, f)
+            session['validation_file'] = validation_file
+            # Generate preview plot
+            plot_url = generate_preview_plot(df, validation_result['columns'])
+            validation_result['plot_url'] = plot_url
+        return jsonify(validation_result)
+    except Exception as e:
+        print(f"Sample data error: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'Error loading sample data: {str(e)}'})
+
+@app.route('/download_sample_data')
+def download_sample_data():
+    """Serve the sample data file for download."""
+    try:
+        sample_path = os.path.join(os.path.dirname(__file__), 'test_data_single_peak.csv')
+        if not os.path.exists(sample_path):
+            return jsonify({'status': 'error', 'message': 'Sample data file not found'})
+        from flask import send_file
+        return send_file(
+            sample_path,
+            as_attachment=True,
+            download_name='test_data_single_peak.csv',
+            mimetype='text/csv'
+        )
+    except Exception as e:
+        print(f"Download sample data error: {str(e)}")
+        return jsonify({'status': 'error', 'message': f'Error downloading sample data: {str(e)}'})
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'

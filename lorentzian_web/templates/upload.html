@@ -3,8 +3,51 @@ Tool{% endblock %} {% block content %}
 <div class="container">
   <h2><i class="fas fa-upload me-2"></i>Upload Your Data</h2>
   <p class="text-muted">
-    Upload your astronomical data file for Lorentzian profile fitting analysis.
+    Upload your astronomical data file for Lorentzian profile fitting analysis, or try our sample data.
   </p>
+
+  <!-- Sample Data Section -->
+  <div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+      <h6><i class="fas fa-flask me-2"></i>Try Sample Data</h6>
+    </div>
+    <div class="card-body">
+      <p class="mb-3">
+        New to the tool? Start with our sample astronomical data to explore the features.
+      </p>
+      <div class="row">
+        <div class="col-md-6">
+          <div class="d-flex align-items-center mb-3">
+            <i class="fas fa-star text-warning me-2"></i>
+            <span><strong>Sample Dataset:</strong> Single Lorentzian Peak</span>
+          </div>
+          <ul class="list-unstyled text-muted small mb-3">
+            <li><i class="fas fa-check text-success me-1"></i> 101 data points</li>
+            <li><i class="fas fa-check text-success me-1"></i> Wavelength range: 6560-6565 Å</li>
+            <li><i class="fas fa-check text-success me-1"></i> Includes measurement errors</li>
+            <li><i class="fas fa-check text-success me-1"></i> Simulated H-alpha emission line</li>
+          </ul>
+        </div>
+        <div class="col-md-6">
+          <div class="d-grid gap-2">
+            <button class="btn btn-success btn-lg" id="use-sample-btn">
+              <i class="fas fa-play me-2"></i>Use Sample Data
+            </button>
+            <button class="btn btn-outline-secondary" id="download-sample-btn">
+              <i class="fas fa-download me-2"></i>Download Sample Data
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Divider -->
+  <div class="text-center mb-4">
+    <hr class="w-25 d-inline-block">
+    <span class="text-muted mx-3">OR</span>
+    <hr class="w-25 d-inline-block">
+  </div>
 
   <!-- File Upload Area -->
   <div class="drag-area" id="drag-area">
@@ -91,6 +134,32 @@ Tool{% endblock %} {% block content %}
   $(document).ready(function () {
     const dragArea = $("#drag-area");
     const fileInput = $("#file-input");
+
+    // Sample data button click
+    $("#use-sample-btn").on("click", function () {
+      const btn = $(this);
+      const originalText = btn.html();
+      btn
+        .prop("disabled", true)
+        .html('<i class="fas fa-spinner fa-spin me-2"></i>Loading Sample...');
+
+      $.ajax({
+        url: "/use_sample_data",
+        type: "POST",
+        success: function (response) {
+          handleUploadResponse(response);
+        },
+        error: function (xhr, status, error) {
+          showError("Failed to load sample data: " + error);
+          btn.prop("disabled", false).html(originalText);
+        },
+      });
+    });
+
+    // Download sample data button click
+    $("#download-sample-btn").on("click", function () {
+      window.location.href = "/download_sample_data";
+    });
 
     // Drag and drop functionality
     dragArea.on("dragover", function (e) {
